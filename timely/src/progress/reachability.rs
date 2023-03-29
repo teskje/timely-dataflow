@@ -898,3 +898,35 @@ pub mod logging {
         fn from(v: TargetUpdate) -> TrackerEvent { TrackerEvent::TargetUpdate(v) }
     }
 }
+
+impl<T: Timestamp> Drop for Tracker<T> {
+    fn drop(&mut self) {
+        let Some(logger) = &mut self.logger else { return; };
+        for (index, per_operator) in self.per_operator.iter_mut().enumerate() {
+            let target_changes = per_operator.targets
+                .iter_mut()
+                .enumerate()
+                .flat_map(|(port, target)| {
+                    target.pointstamps
+                        .updates()
+                        .map(move |(time, diff)| (index, port, time.clone(), -diff))
+                })
+                .collect::<Vec<_>>();
+            if !target_changes.is_empty() {
+                logger.log_target_updates(Box::new(target_changes));
+            }
+            let source_changes = per_operator.sources
+                .iter_mut()
+                .enumerate()
+                .flat_map(|(port, source)| {
+                    source.pointstamps
+                        .updates()
+                        .map(move |(time, diff)| (index, port, time.clone(), -diff))
+                })
+                .collect::<Vec<_>>();
+            if !source_changes.is_empty() {
+                logger.log_source_updates(Box::new(source_changes));
+            }
+        }
+    }
+}

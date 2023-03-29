@@ -528,6 +528,14 @@ impl<T> MutableAntichain<T> {
             .map(|td| td.1)
             .sum()
     }
+
+    pub(crate) fn updates(&mut self) -> impl Iterator<Item=&(T, i64)>
+    where
+        T: Clone + PartialOrder + Ord,
+    {
+        self.rebuild();
+        self.updates.iter()
+    }
 }
 
 impl<T> Default for MutableAntichain<T> {
