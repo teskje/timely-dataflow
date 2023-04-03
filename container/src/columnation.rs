@@ -302,6 +302,7 @@ mod container {
             I: FnMut(&Self::Item) -> usize,
             F: FnMut(usize, &mut Self),
         {
+            #[inline(always)]
             fn ensure_capacity<E: Columnation>(this: &mut TimelyStack<E>) {
                 let capacity = this.local.capacity();
                 let desired_capacity = crate::buffer::default_capacity::<E>();

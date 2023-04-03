@@ -3,10 +3,10 @@
 use std::rc::Rc;
 use std::cell::{RefCell, RefMut};
 use std::any::Any;
+use std::collections::hash_map::Entry;
 use std::str::FromStr;
 use std::time::{Instant, Duration};
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
 use crate::communication::{Allocate, Data, Push, Pull};
@@ -382,12 +382,10 @@ impl<A: Allocate> Worker<A> {
             self.logging().as_mut().map(|l| l.log(crate::logging::ParkEvent::unpark()));
         }
         else {   // Schedule active dataflows.
-
             let active_dataflows = &mut self.active_dataflows;
             self.activations
                 .borrow_mut()
                 .for_extensions(&[], |index| active_dataflows.push(index));
-
             let mut dataflows = self.dataflows.borrow_mut();
             for index in active_dataflows.drain(..) {
                 // Step dataflow if it exists, remove if not incomplete.

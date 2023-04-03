@@ -408,6 +408,7 @@ pub struct Tracker<T:Timestamp> {
 }
 
 /// Target and source information for each operator.
+#[derive(Debug)]
 pub struct PerOperator<T: Timestamp> {
     /// Port information for each target.
     pub targets: Vec<PortInformation<T>>,
@@ -426,7 +427,7 @@ impl<T: Timestamp> PerOperator<T> {
 }
 
 /// Per-port progress-tracking information.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PortInformation<T: Timestamp> {
     /// Current counts of active pointstamps.
     pub pointstamps: MutableAntichain<T>,
@@ -867,6 +868,7 @@ pub mod logging {
     }
 
     /// Events that the tracker may record.
+    #[derive(Debug)]
     pub enum TrackerEvent {
         /// Updates made at a source of data.
         SourceUpdate(SourceUpdate),
@@ -875,6 +877,7 @@ pub mod logging {
     }
 
     /// An update made at a source of data.
+    #[derive(Debug)]
     pub struct SourceUpdate {
         /// An identifier for the tracker.
         pub tracker_id: Vec<usize>,
@@ -883,6 +886,7 @@ pub mod logging {
     }
 
     /// An update made at a target of data.
+    #[derive(Debug)]
     pub struct TargetUpdate {
         /// An identifier for the tracker.
         pub tracker_id: Vec<usize>,
@@ -902,6 +906,11 @@ pub mod logging {
 impl<T: Timestamp> Drop for Tracker<T> {
     fn drop(&mut self) {
         let Some(logger) = &mut self.logger else { return; };
+        // We're logging the per-operator pointstamps. This is correct because the data is only
+        // updated in propagate_all, which also logs its changes. Not calling propagate_all
+        // limits the reachability retractions to what was logged earlier. We could call
+        // propagate_all here, but this could only result in announcing new reachability
+        // and immediately retracting the summed information.
         for (index, per_operator) in self.per_operator.iter_mut().enumerate() {
             let target_changes = per_operator.targets
                 .iter_mut()

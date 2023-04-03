@@ -303,6 +303,7 @@ where
 
     /// Maintain the bounds of pending (non-compacted) updates versus clean (compacted) data.
     /// This function tries to minimize work by only compacting if enough work has accumulated.
+    // #[inline(always)]
     fn maintain_bounds(&mut self) {
         // if we have more than 32 elements and at least half of them are not clean, compact
         if self.updates.len() > 32 && self.updates.len() >> 1 >= self.clean {

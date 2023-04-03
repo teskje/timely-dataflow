@@ -1,6 +1,6 @@
 //! Monitor progress at a `Stream`.
 
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 
 use crate::progress::Timestamp;
@@ -94,7 +94,7 @@ impl<G: Scope, D: Container> Probe<G, D> for StreamCore<G, D> {
         let (tee, stream) = builder.new_output();
         let mut output = PushBuffer::new(PushCounter::new(tee));
 
-        let shared_frontier = handle.frontier.clone();
+        let shared_frontier = handle.get_or_initialize_frontier();
         let mut started = false;
 
         let mut vector = Default::default();
@@ -139,18 +139,18 @@ impl<G: Scope, D: Container> Probe<G, D> for StreamCore<G, D> {
 /// Reports information about progress at the probe.
 #[derive(Debug)]
 pub struct Handle<T:Timestamp> {
-    frontier: Rc<RefCell<MutableAntichain<T>>>
+    frontier: Option<Weak<RefCell<MutableAntichain<T>>>>
 }
 
 impl<T: Timestamp> Handle<T> {
     /// returns true iff the frontier is strictly less than `time`.
-    #[inline] pub fn less_than(&self, time: &T) -> bool { self.frontier.borrow().less_than(time) }
+    #[inline] pub fn less_than(&self, time: &T) -> bool { self.frontier().map(|f| f.borrow().less_than(time)).unwrap_or(false) }
     /// returns true iff the frontier is less than or equal to `time`.
-    #[inline] pub fn less_equal(&self, time: &T) -> bool { self.frontier.borrow().less_equal(time) }
+    #[inline] pub fn less_equal(&self, time: &T) -> bool { self.frontier().map(|f| f.borrow().less_equal(time)).unwrap_or(false) }
     /// returns true iff the frontier is empty.
-    #[inline] pub fn done(&self) -> bool { self.frontier.borrow().is_empty() }
+    #[inline] pub fn done(&self) -> bool { self.frontier().map(|f| f.borrow().is_empty()).unwrap_or(true) }
     /// Allocates a new handle.
-    #[inline] pub fn new() -> Self { Handle { frontier: Rc::new(RefCell::new(MutableAntichain::new())) } }
+    #[inline] pub fn new() -> Self { Handle { frontier: None } }
 
     /// Invokes a method on the frontier, returning its result.
     ///
@@ -167,7 +167,26 @@ impl<T: Timestamp> Handle<T> {
     /// ```
     #[inline]
     pub fn with_frontier<R, F: FnMut(AntichainRef<T>)->R>(&self, mut function: F) -> R {
-        function(self.frontier.borrow().frontier())
+        if let Some(frontier) = self.frontier(){
+            function(frontier.borrow().frontier())
+        } else {
+            function(MutableAntichain::new().frontier())
+        }
+    }
+
+    fn get_or_initialize_frontier(&mut self) -> Rc<RefCell<MutableAntichain<T>>> {
+        if let Some(strong) = self.frontier() {
+            strong
+        } else {
+            let frontier = Rc::new(RefCell::new(MutableAntichain::new()));
+            self.frontier = Some(Rc::downgrade(&frontier));
+            frontier
+
+        }
+    }
+
+    fn frontier(&self) -> Option<Rc<RefCell<MutableAntichain<T>>>> {
+        self.frontier.as_ref().and_then(Weak::upgrade)
     }
 }
 
