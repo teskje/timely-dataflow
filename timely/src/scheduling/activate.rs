@@ -1,13 +1,13 @@
 //! Parking and unparking timely fibers.
 
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc, Mutex};
 use std::cell::RefCell;
 use std::thread::Thread;
 use std::collections::BinaryHeap;
 use std::time::{Duration, Instant};
 use std::cmp::Reverse;
-use crossbeam_channel::{Sender, Receiver};
+use std::sync::mpsc::{Sender, Receiver};
 use futures_util::task::ArcWake;
 
 /// Methods required to act as a timely scheduler.
@@ -58,7 +58,7 @@ impl Activations {
 
     /// Creates a new activation tracker.
     pub fn new(timer: Instant) -> Self {
-        let (tx, rx) = crossbeam_channel::unbounded();
+        let (tx, rx) = mpsc::channel();
         Self {
             clean: 0,
             bounds: Vec::new(),
@@ -256,7 +256,7 @@ impl Activator {
 #[derive(Clone, Debug)]
 pub struct SyncActivator {
     path: Vec<usize>,
-    queue: SyncActivations,
+    queue: Arc<Mutex<SyncActivations>>,
 }
 
 impl SyncActivator {
@@ -264,13 +264,13 @@ impl SyncActivator {
     pub fn new(path: &[usize], queue: SyncActivations) -> Self {
         Self {
             path: path.to_vec(),
-            queue,
+            queue: Arc::new(Mutex::new(queue)),
         }
     }
 
     /// Activates the associated path and unparks the associated worker thread.
     pub fn activate(&self) -> Result<(), SyncActivationError> {
-        self.queue.activate(self.path.clone())
+        self.queue.lock().unwrap().activate(self.path.clone())
     }
 }
 

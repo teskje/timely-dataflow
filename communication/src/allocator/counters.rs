@@ -53,9 +53,9 @@ impl<T, P: Push<T>> Push<T> for Pusher<T, P> {
     }
 }
 
-use crossbeam_channel::Sender;
+use std::sync::mpsc::Sender;
 
-/// The push half of an intra-thread channel.
+/// The push half of an inter-thread channel.
 pub struct ArcPusher<T, P: Push<T>> {
     index: usize,
     // count: usize,
