@@ -122,7 +122,7 @@ impl Activations {
     }
 
     /// Maps a function across activated paths.
-    pub fn map_active(&self, logic: impl Fn(&[usize])) {
+    pub fn map_active(&self, mut logic: impl FnMut(&[usize])) {
         for (offset, length) in self.bounds.iter() {
             logic(&self.slices[*offset .. (*offset + *length)]);
         }

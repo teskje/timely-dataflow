@@ -5,7 +5,7 @@ use std::cell::{RefCell, RefMut};
 use std::any::Any;
 use std::str::FromStr;
 use std::time::{Instant, Duration};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
 
@@ -220,6 +220,7 @@ pub struct Worker<A: Allocate> {
     logging: Rc<RefCell<crate::logging_core::Registry<crate::logging::WorkerIdentifier>>>,
 
     activations: Rc<RefCell<Activations>>,
+    skipped_activations: Rc<RefCell<HashMap<usize, HashSet<Vec<usize>>>>>,
     active_dataflows: Vec<usize>,
 
     // Temporary storage for channel identifiers during dataflow construction.
@@ -273,8 +274,31 @@ impl<A: Allocate> Worker<A> {
             dataflow_counter:  Default::default(),
             logging: Rc::new(RefCell::new(crate::logging_core::Registry::new(now, index))),
             activations: Rc::new(RefCell::new(Activations::new(now))),
+            skipped_activations: Default::default(),
             active_dataflows: Default::default(),
             temp_channel_ids:  Default::default(),
+        }
+    }
+
+    /// Suspends the given dataflow.
+    pub fn suspend_dataflow(&mut self, index: usize) {
+        self.dataflows.borrow_mut().get_mut(&index).unwrap().suspended = true;
+    }
+
+    /// Unsuspends the given dataflow.
+    pub fn unsuspend_dataflow(&mut self, index: usize) {
+        let mut dataflows = self.dataflows.borrow_mut();
+        let dataflow = dataflows.get_mut(&index).unwrap();
+
+        dataflow.suspended = false;
+
+        // Produce any activations previously skipped.
+        let skipped = self.skipped_activations.borrow_mut()
+            .remove(&index)
+            .unwrap_or_default();
+        let mut activations = self.activations.borrow_mut();
+        for path in skipped {
+            activations.activate(&path);
         }
     }
 
@@ -383,7 +407,6 @@ impl<A: Allocate> Worker<A> {
             self.logging().as_mut().map(|l| l.log(crate::logging::ParkEvent::unpark()));
         }
         else {   // Schedule active dataflows.
-
             let active_dataflows = &mut self.active_dataflows;
             self.activations
                 .borrow_mut()
@@ -393,6 +416,19 @@ impl<A: Allocate> Worker<A> {
             for index in active_dataflows.drain(..) {
                 // Step dataflow if it exists, remove if not incomplete.
                 if let Entry::Occupied(mut entry) = dataflows.entry(index) {
+                    if entry.get().suspended {
+                        let mut skipped = self.skipped_activations.borrow_mut();
+                        self.activations
+                            .borrow()
+                            .map_active(|path| if path[0] == index {
+                                skipped
+                                    .entry(index)
+                                    .or_default()
+                                    .insert(path.to_vec());
+                            });
+                        continue;
+                    }
+
                     // TODO: This is a moment at which a scheduling decision is being made.
                     let incomplete = entry.get_mut().step();
                     if !incomplete {
@@ -663,6 +699,7 @@ impl<A: Allocate> Worker<A> {
             operate: Some(Box::new(operator)),
             resources: Some(Box::new(resources)),
             channel_ids,
+            suspended: false,
         };
         self.dataflows.borrow_mut().insert(dataflow_index, wrapper);
 
@@ -725,6 +762,7 @@ impl<A: Allocate> Clone for Worker<A> {
             dataflow_counter: self.dataflow_counter.clone(),
             logging: self.logging.clone(),
             activations: self.activations.clone(),
+            skipped_activations: self.skipped_activations.clone(),
             active_dataflows: Vec::new(),
             temp_channel_ids: self.temp_channel_ids.clone(),
         }
@@ -737,6 +775,7 @@ struct Wrapper {
     operate: Option<Box<dyn Schedule>>,
     resources: Option<Box<dyn Any>>,
     channel_ids: Vec<usize>,
+    suspended: bool,
 }
 
 impl Wrapper {
