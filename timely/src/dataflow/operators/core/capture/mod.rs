@@ -27,7 +27,8 @@
 //! # #[cfg(miri)] fn main() {}
 //! # #[cfg(not(miri))]
 //! # fn main() {
-//! timely::execute(timely::Config::thread(), |worker| {
+//! # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+//! timely::execute(timely::Config::thread(), async |worker| {
 //!     let handle1 = Rc::new(EventLink::new());
 //!     let handle2 = Some(handle1.clone());
 //!
@@ -40,7 +41,8 @@
 //!         handle2.replay_into(scope2)
 //!                .inspect(|x| println!("replayed: {:?}", x));
 //!     })
-//! }).unwrap();
+//! }).await.unwrap().join_and_assert().await;
+//! # });
 //! # }
 //! ```
 //!
@@ -59,7 +61,8 @@
 //! # #[cfg(miri)] fn main() {}
 //! # #[cfg(not(miri))]
 //! # fn main() {
-//! timely::execute(timely::Config::thread(), |worker| {
+//! # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+//! timely::execute(timely::Config::thread(), async |worker| {
 //!     let list = TcpListener::bind("127.0.0.1:8000").unwrap();
 //!     let send = TcpStream::connect("127.0.0.1:8000").unwrap();
 //!     let recv = list.incoming().next().unwrap().unwrap();
@@ -77,7 +80,8 @@
 //!             .replay_into(scope2)
 //!             .inspect(|x| println!("replayed: {:?}", x));
 //!     })
-//! }).unwrap();
+//! }).await.unwrap().join_and_assert().await;
+//! # });
 //! # }
 //! ```
 

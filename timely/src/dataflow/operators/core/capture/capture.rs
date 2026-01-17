@@ -32,11 +32,12 @@ pub trait Capture<T: Timestamp, C: Container> {
     /// use timely::dataflow::operators::{Capture, ToStream};
     /// use timely::dataflow::operators::capture::{EventLink, Replay, Extract};
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // get send and recv endpoints, wrap send to share
     /// let (send, recv) = ::std::sync::mpsc::channel();
     /// let send = Arc::new(Mutex::new(send));
     ///
-    /// timely::execute(timely::Config::thread(), move |worker| {
+    /// timely::execute(timely::Config::thread(), async move |worker| {
     ///
     ///     // this is only to validate the output.
     ///     let send = send.lock().unwrap().clone();
@@ -54,9 +55,10 @@ pub trait Capture<T: Timestamp, C: Container> {
     ///         handle2.replay_into(scope2)
     ///                .capture_into(send)
     ///     });
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
     ///
     /// assert_eq!(recv.extract()[0].1, (0..10).collect::<Vec<_>>());
+    /// # });
     /// ```
     ///
     /// The types `EventWriter<T, D, W>` and `EventReader<T, D, R>` can be
@@ -75,6 +77,7 @@ pub trait Capture<T: Timestamp, C: Container> {
     /// # #[cfg(miri)] fn main() {}
     /// # #[cfg(not(miri))]
     /// # fn main() {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // get send and recv endpoints, wrap send to share
     /// let (send0, recv0) = ::std::sync::mpsc::channel();
     /// let send0 = Arc::new(Mutex::new(send0));
@@ -85,22 +88,27 @@ pub trait Capture<T: Timestamp, C: Container> {
     /// let recv = list.incoming().next().unwrap().unwrap();
     /// recv.set_nonblocking(true).unwrap();
     ///
-    /// std::thread::scope(move |s| {
-    ///     s.spawn(move || timely::example(move |scope1| {
+    /// let capture = tokio::task::spawn_local(async {
+    ///     timely::example(move |scope1| {
     ///         (0..10u64)
     ///             .to_stream(scope1)
     ///             .capture_into(EventWriter::new(send))
-    ///     }));
-    ///     s.spawn(move || timely::example(move |scope2| {
+    ///     }).await;
+    /// });
+    /// let replay = tokio::task::spawn_local(async {
+    ///     timely::example(move |scope2| {
     ///         // this is only to validate the output.
     ///         let send0 = send0.lock().unwrap().clone();
     ///         Some(EventReader::<_,Vec<u64>,_>::new(recv))
     ///             .replay_into(scope2)
     ///             .capture_into(send0)
-    ///     }));
+    ///     }).await;
     /// });
+    /// capture.await.unwrap();
+    /// replay.await.unwrap();
     ///
     /// assert_eq!(recv0.extract()[0].1, (0..10).collect::<Vec<_>>());
+    /// # });
     /// # }
     /// ```
     fn capture_into<P: EventPusher<T, C>+'static>(&self, pusher: P);

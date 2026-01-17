@@ -18,7 +18,8 @@ struct WordCount {
     diff: i64,
 }
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
     type InnerContainer = <WordCount as columnar::Columnar>::Container;
     type Container = Column<InnerContainer>;
@@ -31,7 +32,7 @@ fn main() {
     };
 
     // initializes and runs a timely dataflow.
-    timely::execute(config, |worker| {
+    timely::execute(config, async |worker| {
         let mut input = <InputHandleCore<_, CapacityContainerBuilder<Container>>>::new();
         let probe = ProbeHandle::new();
 
@@ -118,11 +119,14 @@ fn main() {
             input.send(WordCountReference { text: "flat container", diff: 1 });
             input.advance_to(round + 1);
             while probe.less_than(input.time()) {
-                worker.step();
+                worker.step().await;
             }
         }
     })
-    .unwrap();
+    .await
+    .unwrap()
+    .join_and_assert()
+    .await;
 }
 
 

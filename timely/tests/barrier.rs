@@ -4,17 +4,17 @@ use timely::dataflow::operators::{Feedback, ConnectLoop};
 use timely::dataflow::operators::generic::operator::Operator;
 use timely::container::CapacityContainerBuilder;
 
-#[test] fn barrier_sync_1w() { barrier_sync_helper(CommunicationConfig::Thread); }
-#[test] fn barrier_sync_2w() { barrier_sync_helper(CommunicationConfig::Process(2)); }
-#[test] fn barrier_sync_3w() { barrier_sync_helper(CommunicationConfig::Process(3)); }
+#[tokio::test(flavor = "local")] async fn barrier_sync_1w() { barrier_sync_helper(CommunicationConfig::Thread).await; }
+#[tokio::test(flavor = "local")] async fn barrier_sync_2w() { barrier_sync_helper(CommunicationConfig::Process(2)).await; }
+#[tokio::test(flavor = "local")] async fn barrier_sync_3w() { barrier_sync_helper(CommunicationConfig::Process(3)).await; }
 
 // This method asserts that each round of execution is notified of at most one time.
-fn barrier_sync_helper(comm_config: ::timely::CommunicationConfig) {
+async fn barrier_sync_helper(comm_config: ::timely::CommunicationConfig) {
     let config = Config {
         communication: comm_config,
         worker: WorkerConfig::default(),
     };
-    timely::execute(config, move |worker| {
+    timely::execute(config, async move |worker| {
         worker.dataflow(move |scope| {
             let (handle, stream) = scope.feedback::<Vec<usize>>(1);
             stream.unary_notify::<CapacityContainerBuilder<_>, _, _>(
@@ -35,5 +35,5 @@ fn barrier_sync_helper(comm_config: ::timely::CommunicationConfig) {
             )
             .connect_loop(handle);
         });
-    }).unwrap(); // asserts error-free execution;
+    }).await.unwrap().join_and_assert().await;
 }

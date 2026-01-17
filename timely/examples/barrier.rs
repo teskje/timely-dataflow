@@ -3,11 +3,12 @@ use timely::dataflow::operators::{Feedback, ConnectLoop};
 use timely::dataflow::operators::generic::operator::Operator;
 use timely::container::CapacityContainerBuilder;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
     let iterations = std::env::args().nth(1).unwrap().parse::<usize>().unwrap_or(1_000_000);
 
-    timely::execute_from_args(std::env::args().skip(2), move |worker| {
+    timely::execute_from_args(std::env::args().skip(2), async move |worker| {
 
         worker.dataflow(move |scope| {
             let (handle, stream) = scope.feedback::<Vec<usize>>(1);
@@ -26,5 +27,5 @@ fn main() {
             )
             .connect_loop(handle);
         });
-    }).unwrap(); // asserts error-free execution;
+    }).await.unwrap().join_and_assert().await;
 }

@@ -27,10 +27,10 @@ impl<A: Allocate> Barrier<A> {
     ///
     /// This method does *not* block dataflow execution, which continues
     /// to execute while we await the arrival of the other workers.
-    pub fn wait(&mut self) {
+    pub async fn wait(&mut self) {
         self.advance();
         while !self.reached() {
-            self.worker.step();
+            self.worker.step().await;
         }
     }
 

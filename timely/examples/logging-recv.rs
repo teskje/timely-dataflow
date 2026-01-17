@@ -5,8 +5,9 @@ use timely::dataflow::operators::Inspect;
 use timely::dataflow::operators::capture::{EventReader, Replay};
 use timely::logging::{TimelySetup, TimelyEvent};
 
-fn main() {
-    timely::execute_from_args(std::env::args(), |worker| {
+#[tokio::main(flavor = "local")]
+async fn main() {
+    timely::execute_from_args(std::env::args(), async |worker| {
 
         let source_peers = std::env::args().nth(1).unwrap().parse::<usize>().unwrap();
 
@@ -26,5 +27,5 @@ fn main() {
                 .replay_into(scope)
                 .inspect(|x| println!("replayed: {:?}", x));
         })
-    }).unwrap(); // asserts error-free execution
+    }).await.unwrap(); // asserts error-free execution
 }

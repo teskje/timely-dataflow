@@ -5,9 +5,10 @@ use timely::dataflow::operators::{Input, Inspect, Probe};
 use timely::dataflow::operators::generic::operator::Operator;
 use timely::dataflow::channels::pact::Exchange;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
     // initializes and runs a timely dataflow.
-    timely::execute_from_args(std::env::args(), |worker| {
+    timely::execute_from_args(std::env::args(), async |worker| {
         let index = worker.index();
         let mut input = InputHandle::new();
         let probe = ProbeHandle::new();
@@ -49,8 +50,8 @@ fn main() {
             }
             input.advance_to(round + 1);
             while probe.less_than(input.time()) {
-                worker.step();
+                worker.step().await;
             }
         }
-    }).unwrap();
+    }).await.unwrap().join_and_assert().await;
 }

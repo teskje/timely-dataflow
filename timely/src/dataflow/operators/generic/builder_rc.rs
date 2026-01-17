@@ -222,9 +222,9 @@ impl<G: Scope> OperatorBuilder<G> {
 mod tests {
     use crate::dataflow::operators::generic::OutputBuilder;
 
-    #[test]
+    #[tokio::test(flavor = "local")]
     #[should_panic]
-    fn incorrect_capabilities() {
+    async fn incorrect_capabilities() {
 
         // This tests that if we attempt to use a capability associated with the
         // wrong output, there is a run-time assertion.
@@ -251,11 +251,11 @@ mod tests {
                     output_handle1.session(&capabilities[1]);
                 }
             });
-        })
+        }).await
     }
 
-    #[test]
-    fn correct_capabilities() {
+    #[tokio::test(flavor = "local")]
+    async fn correct_capabilities() {
 
         // This tests that if we attempt to use capabilities with the correct outputs
         // there is no runtime assertion
@@ -290,6 +290,6 @@ mod tests {
             });
 
             "Hello".to_owned()
-        });
+        }).await;
     }
 }

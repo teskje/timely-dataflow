@@ -110,21 +110,23 @@ impl Config {
 /// use timely::dataflow::operators::{ToStream, Inspect, Capture};
 /// use timely::dataflow::operators::capture::Extract;
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// let data = timely::example(|scope| {
 ///     (0..10).to_stream(scope)
 ///            .inspect(|x| println!("seen: {:?}", x))
 ///            .capture()
-/// });
+/// }).await;
 ///
 /// // the extracted data should have data (0..10) at timestamp 0.
 /// assert_eq!(data.extract()[0].1, (0..10).collect::<Vec<_>>());
+/// # });
 /// ```
-pub fn example<T, F>(func: F) -> T
+pub async fn example<T, F>(func: F) -> T
 where
     T: Send+'static,
     F: FnOnce(&mut Child<Worker<crate::communication::allocator::thread::Thread>,u64>)->T+Send+Sync+'static
 {
-    crate::execute::execute_directly(|worker| worker.dataflow(|scope| func(scope)))
+    crate::execute::execute_directly(|worker| worker.dataflow(|scope| func(scope))).await
 }
 
 
@@ -140,15 +142,17 @@ where
 /// ```rust
 /// use timely::dataflow::operators::{ToStream, Inspect};
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// // execute a timely dataflow using three worker threads.
 /// timely::execute_directly(|worker| {
 ///     worker.dataflow::<(),_,_>(|scope| {
 ///         (0..10).to_stream(scope)
 ///                .inspect(|x| println!("seen: {:?}", x));
 ///     })
-/// });
+/// }).await;
+/// # });
 /// ```
-pub fn execute_directly<T, F>(func: F) -> T
+pub async fn execute_directly<T, F>(func: F) -> T
 where
     T: Send+'static,
     F: FnOnce(&mut Worker<crate::communication::allocator::thread::Thread>)->T+Send+Sync+'static
@@ -157,7 +161,7 @@ where
     let mut worker = crate::worker::Worker::new(WorkerConfig::default(), alloc, Some(std::time::Instant::now()));
     let result = func(&mut worker);
     while worker.has_dataflows() {
-        worker.step_or_park(None);
+        worker.step_or_park(None).await;
     }
     result
 }
@@ -184,13 +188,15 @@ where
 /// ```rust
 /// use timely::dataflow::operators::{ToStream, Inspect};
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// // execute a timely dataflow using three worker threads.
-/// timely::execute(timely::Config::process(3), |worker| {
+/// timely::execute(timely::Config::process(3), async |worker| {
 ///     worker.dataflow::<(),_,_>(|scope| {
 ///         (0..10).to_stream(scope)
 ///                .inspect(|x| println!("seen: {:?}", x));
 ///     })
-/// }).unwrap();
+/// }).await.unwrap().join_and_assert().await;
+/// # });
 /// ```
 ///
 /// The following example demonstrates how one can extract data from a multi-worker execution.
@@ -206,25 +212,27 @@ where
 /// let (send, recv) = ::std::sync::mpsc::channel();
 /// let send = Arc::new(Mutex::new(send));
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// // execute a timely dataflow using three worker threads.
-/// timely::execute(timely::Config::process(3), move |worker| {
+/// timely::execute(timely::Config::process(3), async move |worker| {
 ///     let send = send.lock().unwrap().clone();
 ///     worker.dataflow::<(),_,_>(move |scope| {
 ///         (0..10).to_stream(scope)
 ///                .inspect(|x| println!("seen: {:?}", x))
 ///                .capture_into(send);
 ///     });
-/// }).unwrap();
+/// }).await.unwrap().join_and_assert().await;
 ///
 /// // the extracted data should have data (0..10) thrice at timestamp 0.
 /// assert_eq!(recv.extract()[0].1, (0..30).map(|x| x / 3).collect::<Vec<_>>());
+/// # });
 /// ```
-pub fn execute<T, F>(config: Config, func: F) -> Result<WorkerGuards<T>,String>
+pub async fn execute<T, F>(config: Config, func: F) -> Result<WorkerGuards<T>,String>
 where
     T:Send+'static,
-    F: Fn(&mut Worker<Allocator>)->T+Send+Sync+'static,
+    F: AsyncFn(&mut Worker<Allocator>)->T+Send+Sync+'static,
 {
-    let (allocators, other) = config.communication.try_build()?;
+    let (allocators, other) = config.communication.try_build().await?;
     execute_from(allocators, other, config.worker, func)
 }
 
@@ -262,13 +270,15 @@ where
 /// ```rust
 /// use timely::dataflow::operators::{ToStream, Inspect};
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// // execute a timely dataflow using command line parameters
-/// timely::execute_from_args(std::env::args(), |worker| {
+/// timely::execute_from_args(std::env::args(), async |worker| {
 ///     worker.dataflow::<(),_,_>(|scope| {
 ///         (0..10).to_stream(scope)
 ///                .inspect(|x| println!("seen: {:?}", x));
 ///     })
-/// }).unwrap();
+/// }).await.unwrap().join_and_assert().await;
+/// # });
 /// ```
 /// ```ignore
 /// host0% cargo run -- -w 2 -n 4 -h hosts.txt -p 0
@@ -284,12 +294,12 @@ where
 /// host3:port
 /// ```
 #[cfg(feature = "getopts")]
-pub fn execute_from_args<I, T, F>(iter: I, func: F) -> Result<WorkerGuards<T>,String>
+pub async fn execute_from_args<I, T, F>(iter: I, func: F) -> Result<WorkerGuards<T>,String>
     where I: Iterator<Item=String>,
           T:Send+'static,
-          F: Fn(&mut Worker<Allocator>)->T+Send+Sync+'static, {
+          F: AsyncFn(&mut Worker<Allocator>)->T+Send+Sync+'static, {
     let config = Config::from_args(iter)?;
-    execute(config, func)
+    execute(config, func).await
 }
 
 /// Executes a timely dataflow from supplied allocators and logging.
@@ -300,14 +310,16 @@ pub fn execute_from_args<I, T, F>(iter: I, func: F) -> Result<WorkerGuards<T>,St
 /// use timely::dataflow::operators::{ToStream, Inspect};
 /// use timely::WorkerConfig;
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// // execute a timely dataflow using command line parameters
-/// let (builders, other) = timely::CommunicationConfig::Process(3).try_build().unwrap();
-/// timely::execute::execute_from(builders, other, WorkerConfig::default(), |worker| {
+/// let (builders, other) = timely::CommunicationConfig::Process(3).try_build().await.unwrap();
+/// timely::execute::execute_from(builders, other, WorkerConfig::default(), async |worker| {
 ///     worker.dataflow::<(),_,_>(|scope| {
 ///         (0..10).to_stream(scope)
 ///                .inspect(|x| println!("seen: {:?}", x));
 ///     })
-/// }).unwrap();
+/// }).unwrap().join_and_assert().await;
+/// # });
 /// ```
 pub fn execute_from<A, T, F>(
     builders: Vec<A>,
@@ -318,12 +330,12 @@ pub fn execute_from<A, T, F>(
 where
     A: AllocateBuilder+'static,
     T: Send+'static,
-    F: Fn(&mut Worker<<A as AllocateBuilder>::Allocator>)->T+Send+Sync+'static {
-    initialize_from(builders, others, move |allocator| {
+    F: AsyncFn(&mut Worker<<A as AllocateBuilder>::Allocator>)->T+Send+Sync+'static {
+    initialize_from(builders, others, async move |allocator| {
         let mut worker = Worker::new(worker_config.clone(), allocator, Some(std::time::Instant::now()));
-        let result = func(&mut worker);
+        let result = func(&mut worker).await;
         while worker.has_dataflows() {
-            worker.step_or_park(None);
+            worker.step_or_park(None).await;
         }
         result
     })

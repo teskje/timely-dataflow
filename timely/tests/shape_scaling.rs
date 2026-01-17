@@ -3,15 +3,15 @@ use timely::dataflow::operators::Input;
 use timely::dataflow::InputHandle;
 use timely::Config;
 
-#[test] fn operator_scaling_1() { operator_scaling(1); }
-#[test] fn operator_scaling_10() { operator_scaling(10); }
-#[test] fn operator_scaling_100() { operator_scaling(100); }
-#[test] #[cfg_attr(miri, ignore)] fn operator_scaling_1000() { operator_scaling(1000); }
-#[test] #[cfg_attr(miri, ignore)] fn operator_scaling_10000() { operator_scaling(10000); }
-#[test] #[cfg_attr(miri, ignore)] fn operator_scaling_100000() { operator_scaling(100000); }
+#[tokio::test(flavor = "local")] async fn operator_scaling_1() { operator_scaling(1).await; }
+#[tokio::test(flavor = "local")] async fn operator_scaling_10() { operator_scaling(10).await; }
+#[tokio::test(flavor = "local")] async fn operator_scaling_100() { operator_scaling(100).await; }
+#[tokio::test(flavor = "local")] #[cfg_attr(miri, ignore)] async fn operator_scaling_1000() { operator_scaling(1000).await; }
+#[tokio::test(flavor = "local")] #[cfg_attr(miri, ignore)] async fn operator_scaling_10000() { operator_scaling(10000).await; }
+#[tokio::test(flavor = "local")] #[cfg_attr(miri, ignore)] async fn operator_scaling_100000() { operator_scaling(100000).await; }
 
-fn operator_scaling(scale: u64) {
-    timely::execute(Config::thread(), move |worker| {
+async fn operator_scaling(scale: u64) {
+    timely::execute(Config::thread(), async move |worker| {
         let mut input = InputHandle::new();
         worker.dataflow::<u64, _, _>(|scope| {
             use timely::dataflow::operators::Partition;
@@ -44,18 +44,21 @@ fn operator_scaling(scale: u64) {
             });
         });
     })
-    .unwrap();
+    .await
+    .unwrap()
+    .join_and_assert()
+    .await;
 }
 
-#[test] fn subgraph_scaling_1() { subgraph_scaling(1); }
-#[test] fn subgraph_scaling_10() { subgraph_scaling(10); }
-#[test] fn subgraph_scaling_100() { subgraph_scaling(100); }
-#[test] #[cfg_attr(miri, ignore)] fn subgraph_scaling_1000() { subgraph_scaling(1000); }
-#[test] #[cfg_attr(miri, ignore)] fn subgraph_scaling_10000() { subgraph_scaling(10000); }
-#[test] #[cfg_attr(miri, ignore)] fn subgraph_scaling_100000() { subgraph_scaling(100000); }
+#[tokio::test(flavor = "local")] async fn subgraph_scaling_1() { subgraph_scaling(1).await; }
+#[tokio::test(flavor = "local")] async fn subgraph_scaling_10() { subgraph_scaling(10).await; }
+#[tokio::test(flavor = "local")] async fn subgraph_scaling_100() { subgraph_scaling(100).await; }
+#[tokio::test(flavor = "local")] #[cfg_attr(miri, ignore)] async fn subgraph_scaling_1000() { subgraph_scaling(1000).await; }
+#[tokio::test(flavor = "local")] #[cfg_attr(miri, ignore)] async fn subgraph_scaling_10000() { subgraph_scaling(10000).await; }
+#[tokio::test(flavor = "local")] #[cfg_attr(miri, ignore)] async fn subgraph_scaling_100000() { subgraph_scaling(100000).await; }
 
-fn subgraph_scaling(scale: u64) {
-    timely::execute(Config::thread(), move |worker| {
+async fn subgraph_scaling(scale: u64) {
+    timely::execute(Config::thread(), async move |worker| {
         let mut input = InputHandle::new();
         worker.dataflow::<u64, _, _>(|scope| {
             use timely::dataflow::operators::Partition;
@@ -71,5 +74,8 @@ fn subgraph_scaling(scale: u64) {
             });
         });
     })
-    .unwrap();
+    .await
+    .unwrap()
+    .join_and_assert()
+    .await;
 }

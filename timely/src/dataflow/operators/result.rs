@@ -125,63 +125,63 @@ impl<S: Scope, T: Data, E: Data> ResultStream<S, T, E> for Stream<S, Result<T, E
 mod tests {
     use crate::dataflow::operators::{ToStream, ResultStream, Capture, capture::Extract};
 
-    #[test]
-    fn test_ok() {
+    #[tokio::test(flavor = "local")]
+    async fn test_ok() {
         let output = crate::example(|scope| {
             vec![Ok(0), Err(())].to_stream(scope)
                 .ok()
                 .capture()
-        });
+        }).await;
         assert_eq!(output.extract()[0].1, vec![0]);
     }
 
-    #[test]
-    fn test_err() {
+    #[tokio::test(flavor = "local")]
+    async fn test_err() {
         let output = crate::example(|scope| {
             vec![Ok(0), Err(())].to_stream(scope)
                 .err()
                 .capture()
-        });
+        }).await;
         assert_eq!(output.extract()[0].1, vec![()]);
     }
 
-    #[test]
-    fn test_map_ok() {
+    #[tokio::test(flavor = "local")]
+    async fn test_map_ok() {
         let output = crate::example(|scope| {
             vec![Ok(0), Err(())].to_stream(scope)
                 .map_ok(|_| 10)
                 .capture()
-        });
+        }).await;
         assert_eq!(output.extract()[0].1, vec![Ok(10), Err(())]);
     }
 
-    #[test]
-    fn test_map_err() {
+    #[tokio::test(flavor = "local")]
+    async fn test_map_err() {
         let output = crate::example(|scope| {
             vec![Ok(0), Err(())].to_stream(scope)
                 .map_err(|_| 10)
                 .capture()
-        });
+        }).await;
         assert_eq!(output.extract()[0].1, vec![Ok(0), Err(10)]);
     }
 
-    #[test]
-    fn test_and_then() {
+    #[tokio::test(flavor = "local")]
+    async fn test_and_then() {
         let output = crate::example(|scope| {
             vec![Ok(0), Err(())].to_stream(scope)
                 .and_then(|_| Ok(1))
                 .capture()
-        });
+        }).await;
         assert_eq!(output.extract()[0].1, vec![Ok(1), Err(())]);
     }
 
-    #[test]
-    fn test_unwrap_or_else() {
+    #[tokio::test(flavor = "local")]
+    async fn test_unwrap_or_else() {
         let output = crate::example(|scope| {
             vec![Ok(0), Err(())].to_stream(scope)
                 .unwrap_or_else(|_| 10)
                 .capture()
-        });
+        }).await;
         assert_eq!(output.extract()[0].1, vec![0, 10]);
     }
 }

@@ -6,14 +6,15 @@ use timely::dataflow::operators::{ToStream, Concat, Feedback, ConnectLoop};
 use timely::dataflow::operators::generic::operator::Operator;
 use timely::dataflow::channels::pact::Exchange;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
     // command-line args: numbers of nodes and edges in the random graph.
     let nodes: usize = std::env::args().nth(1).unwrap().parse().unwrap();
     let edges: usize = std::env::args().nth(2).unwrap().parse().unwrap();
 
     // let logging = ::timely::logging::to_tcp_socket();
-    timely::execute_from_args(std::env::args().skip(3), move |worker| {
+    timely::execute_from_args(std::env::args().skip(3), async move |worker| {
 
         let index = worker.index();
         let peers = worker.peers();
@@ -133,5 +134,5 @@ fn main() {
             .concat(&(0..1).map(|x| (x,x)).to_stream(scope))
             .connect_loop(handle);
         });
-    }).unwrap(); // asserts error-free execution;
+    }).await.unwrap().join_and_assert().await;
 }

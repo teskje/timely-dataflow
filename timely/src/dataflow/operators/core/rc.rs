@@ -46,8 +46,8 @@ mod test {
     use crate::dataflow::operators::rc::SharedStream;
     use crate::dataflow::operators::{Capture, Concatenate, InspectCore, Operator, ToStream};
 
-    #[test]
-    fn test_shared() {
+    #[tokio::test(flavor = "local")]
+    async fn test_shared() {
         let output = crate::example(|scope| {
             let shared = vec![Ok(0), Err(())].to_stream(scope).container::<Vec<_>>().shared();
             let shared = shared.inspect_container(|x| println!("seen: {x:?}"));
@@ -70,7 +70,7 @@ mod test {
                 ])
                 .container::<Vec<_>>()
                 .capture()
-        });
+        }).await;
         let output = &mut output.extract()[0].1;
         output.sort();
         output.dedup();

@@ -41,8 +41,9 @@ pub trait Input : Scope {
     /// use timely::*;
     /// use timely::dataflow::operators::core::{Input, Inspect};
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = worker.dataflow(|scope| {
@@ -55,9 +56,10 @@ pub trait Input : Scope {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn new_input<C: Container>(&mut self) -> (Handle<<Self as ScopeParent>::Timestamp, CapacityContainerBuilder<C>>, StreamCore<Self, C>);
 
@@ -78,8 +80,9 @@ pub trait Input : Scope {
     /// use timely::dataflow::operators::core::{Input, InspectCore};
     /// use timely::container::CapacityContainerBuilder;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = worker.dataflow(|scope| {
@@ -92,9 +95,10 @@ pub trait Input : Scope {
     ///     for round in 0..10 {
     ///         input.send_batch(&mut Rc::new(vec![round]));
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn new_input_with_builder<CB: ContainerBuilder>(&mut self) -> (Handle<<Self as ScopeParent>::Timestamp, CB>, StreamCore<Self, CB::Container>);
 
@@ -110,8 +114,9 @@ pub trait Input : Scope {
     /// use timely::dataflow::operators::core::{Input, Inspect};
     /// use timely::dataflow::operators::core::input::Handle;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = Handle::new();
@@ -125,9 +130,10 @@ pub trait Input : Scope {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn input_from<CB: ContainerBuilder>(&mut self, handle: &mut Handle<<Self as ScopeParent>::Timestamp, CB>) -> StreamCore<Self, CB::Container>;
 }
@@ -233,8 +239,9 @@ impl<T: Timestamp, C: Container> Handle<T, CapacityContainerBuilder<C>> {
     /// use timely::dataflow::operators::core::{Input, Inspect};
     /// use timely::dataflow::operators::core::input::Handle;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = Handle::new();
@@ -248,9 +255,10 @@ impl<T: Timestamp, C: Container> Handle<T, CapacityContainerBuilder<C>> {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn new() -> Self {
         Self {
@@ -274,8 +282,9 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     /// use timely::dataflow::operators::core::input::Handle;
     /// use timely_container::CapacityContainerBuilder;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = Handle::<_, CapacityContainerBuilder<_>>::new_with_builder();
@@ -289,9 +298,10 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn new_with_builder() -> Self {
         Self {
@@ -312,8 +322,9 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     /// use timely::dataflow::operators::core::{Input, Inspect};
     /// use timely::dataflow::operators::core::input::Handle;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = Handle::new();
@@ -327,9 +338,10 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn to_stream<G>(&mut self, scope: &mut G) -> StreamCore<G, CB::Container>
     where
@@ -420,8 +432,9 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     /// use timely::dataflow::operators::core::{Input, InspectCore};
     /// use timely::dataflow::operators::core::input::Handle;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = Handle::new();
@@ -434,9 +447,10 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     ///     for round in 0..10 {
     ///         input.send_batch(&mut vec![format!("{}", round)]);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn send_batch(&mut self, buffer: &mut CB::Container) {
         if !buffer.is_empty() {
@@ -501,8 +515,9 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     /// use timely::dataflow::operators::core::{Input, Inspect};
     /// use timely::dataflow::operators::core::input::Handle;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = Handle::new();
@@ -516,9 +531,10 @@ impl<T: Timestamp, CB: ContainerBuilder> Handle<T, CB> {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     #[inline]
     pub fn send<D>(&mut self, data: D) where CB: PushInto<D> {

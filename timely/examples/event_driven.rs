@@ -1,9 +1,10 @@
 // use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Input, Map, Probe};
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
     // initializes and runs a timely dataflow.
-    timely::execute_from_args(std::env::args(), |worker| {
+    timely::execute_from_args(std::env::args(), async |worker| {
 
         let timer = std::time::Instant::now();
 
@@ -40,11 +41,11 @@ fn main() {
             inputs[dataflow].advance_to(round);
             let mut steps = 0;
             while probes[dataflow].less_than(&round) {
-                worker.step();
+                worker.step().await;
                 steps += 1;
             }
             println!("{:?}\tround {} complete in {} steps", timer.elapsed(), round, steps);
         }
 
-    }).unwrap();
+    }).await.unwrap().join_and_assert().await;
 }

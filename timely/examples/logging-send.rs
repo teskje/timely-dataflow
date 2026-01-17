@@ -6,9 +6,10 @@ use timely::logging::{TimelyEventBuilder, TimelyProgressEventBuilder, TimelySumm
 use timely::container::CapacityContainerBuilder;
 use timely::progress::reachability::logging::TrackerEventBuilder;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
     // initializes and runs a timely dataflow.
-    timely::execute_from_args(std::env::args(), |worker| {
+    timely::execute_from_args(std::env::args(), async |worker| {
 
         let batch = std::env::args().nth(1).unwrap().parse::<usize>().unwrap();
         let rounds = std::env::args().nth(2).unwrap().parse::<usize>().unwrap();
@@ -124,7 +125,7 @@ fn main() {
             input_logger.log(());
 
             while probe.less_than(input.time()) {
-                worker.step();
+                worker.step().await;
             }
 
         }
@@ -135,5 +136,5 @@ fn main() {
 
         println!("{:?}\tworker {} complete; rate: {:?}", timer.elapsed(), worker.index(), volume / seconds);
 
-    }).unwrap();
+    }).await.unwrap();
 }

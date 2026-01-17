@@ -2,8 +2,9 @@ use std::net::TcpStream;
 use timely::dataflow::operators::ToStream;
 use timely::dataflow::operators::capture::{Capture, EventWriter};
 
-fn main() {
-    timely::execute_from_args(std::env::args(), |worker| {
+#[tokio::main(flavor = "local")]
+async fn main() {
+    timely::execute_from_args(std::env::args(), async |worker| {
 
         let addr = format!("127.0.0.1:{}", 8000 + worker.index());
         let send = TcpStream::connect(addr).unwrap();
@@ -13,5 +14,5 @@ fn main() {
                 .to_stream(scope)
                 .capture_into(EventWriter::new(send))
         );
-    }).unwrap();
+    }).await.unwrap().join_and_assert().await;
 }

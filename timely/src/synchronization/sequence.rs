@@ -68,7 +68,8 @@ impl<T: ExchangeData> Sequencer<T> {
     /// use timely::Config;
     /// use timely::synchronization::Sequencer;
     ///
-    /// timely::execute(Config::process(4), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute(Config::process(4), async |worker| {
     ///     let timer = Instant::now();
     ///     let mut sequencer = Sequencer::new(worker, timer);
     ///
@@ -79,14 +80,15 @@ impl<T: ExchangeData> Sequencer<T> {
     ///         sequencer.push(format!("worker {:?}, round {:?}", worker.index(), round));
     ///
     ///         // Ensures the pushed string is sent.
-    ///         worker.step();
+    ///         worker.step().await;
     ///
     ///         // Read out received announcements.
     ///         while let Some(element) = sequencer.next() {
     ///             println!("{:?}:\tWorker {:?}:\t recv'd: {:?}", timer.elapsed(), worker.index(), element);
     ///         }
     ///     }
-    /// }).expect("Timely computation did not complete correctly.");
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn new<A: Allocate>(worker: &mut Worker<A>, timer: Instant) -> Self {
         Sequencer::preloaded(worker, timer, VecDeque::new())

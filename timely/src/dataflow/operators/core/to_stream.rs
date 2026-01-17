@@ -16,6 +16,7 @@ pub trait ToStreamBuilder<CB: ContainerBuilder> {
     /// use timely::dataflow::operators::core::capture::Extract;
     /// use timely::container::CapacityContainerBuilder;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let (data1, data2) = timely::example(|scope| {
     ///     let data1 = ToStreamBuilder::<CapacityContainerBuilder<_>>::to_stream_with_builder(0..3, scope)
     ///         .container::<Vec<_>>()
@@ -24,9 +25,10 @@ pub trait ToStreamBuilder<CB: ContainerBuilder> {
     ///         .container::<Vec<_>>()
     ///         .capture();
     ///     (data1, data2)
-    /// });
+    /// }).await;
     ///
     /// assert_eq!(data1.extract(), data2.extract());
+    /// # });
     /// ```
     fn to_stream_with_builder<S: Scope>(self, scope: &mut S) -> StreamCore<S, CB::Container>;
 }
@@ -70,13 +72,15 @@ pub trait ToStream<C> {
     /// use timely::dataflow::operators::core::{ToStream, Capture};
     /// use timely::dataflow::operators::core::capture::Extract;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let (data1, data2) = timely::example(|scope| {
     ///     let data1 = (0..3).to_stream(scope).container::<Vec<_>>().capture();
     ///     let data2 = vec![0,1,2].to_stream(scope).container::<Vec<_>>().capture();
     ///     (data1, data2)
-    /// });
+    /// }).await;
     ///
     /// assert_eq!(data1.extract(), data2.extract());
+    /// # });
     /// ```
     fn to_stream<S: Scope>(self, scope: &mut S) -> StreamCore<S, C>;
 }

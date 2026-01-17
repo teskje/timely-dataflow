@@ -239,8 +239,8 @@ mod test {
     /// Test that nested scopes with pass-through edges (no operators) correctly communicate progress.
     ///
     /// This is for issue: https://github.com/TimelyDataflow/timely-dataflow/issues/377
-    #[test]
-    fn test_nested() {
+    #[tokio::test(flavor = "local")]
+    async fn test_nested() {
 
         use crate::dataflow::{InputHandle, ProbeHandle};
         use crate::dataflow::operators::{Input, Inspect, Probe};
@@ -249,7 +249,7 @@ mod test {
         use crate::dataflow::operators::{Enter, Leave};
 
         // initializes and runs a timely dataflow.
-        crate::execute(crate::Config::process(3), |worker| {
+        crate::execute(crate::Config::process(3), async |worker| {
 
             let index = worker.index();
             let mut input = InputHandle::new();
@@ -276,10 +276,10 @@ mod test {
                 }
                 input.advance_to(round + 1);
                 while probe.less_than(input.time()) {
-                    worker.step_or_park(None);
+                    worker.step_or_park(None).await;
                 }
             }
-        }).unwrap();
+        }).await.unwrap().join_and_assert().await;
     }
 
 }

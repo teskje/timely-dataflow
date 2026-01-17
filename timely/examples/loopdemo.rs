@@ -1,14 +1,15 @@
 use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Input, Feedback, Concat, Map, Filter, ConnectLoop, Probe};
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
     let mut args = std::env::args();
     args.next();
     let rate: usize = args.next().expect("Must specify rate").parse().expect("Rate must be an usize");
     let duration_s: usize = args.next().expect("Must specify duration_s").parse().expect("duration_s must be an usize");
 
-    timely::execute_from_args(args, move |worker| {
+    timely::execute_from_args(args, async move |worker| {
 
         let index = worker.index();
         let peers = worker.peers();
@@ -95,7 +96,7 @@ fn main() {
                 inserted_ns = target_ns;
             }
 
-            worker.step();
+            worker.step().await;
         }
 
         // Report observed latency measurements.
@@ -119,5 +120,5 @@ fn main() {
             }
         }
 
-    }).unwrap();
+    }).await.unwrap().join_and_assert().await;
 }

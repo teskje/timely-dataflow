@@ -3,9 +3,9 @@ use timely::dataflow::operators::{Exchange, Input, Operator, Probe};
 use timely::dataflow::InputHandle;
 use timely::Config;
 
-#[test]
-fn gh_523() {
-    timely::execute(Config::thread(), |worker| {
+#[tokio::test(flavor = "local")]
+async fn gh_523() {
+    timely::execute(Config::thread(), async |worker| {
         let mut input = InputHandle::new();
         let probe = worker.dataflow::<u64, _, _>(|scope| {
             scope
@@ -32,10 +32,13 @@ fn gh_523() {
         input.close();
 
         while !probe.done() {
-            worker.step();
+            worker.step().await;
         }
 
         println!("worker {} complete", worker.index());
     })
-    .unwrap();
+    .await
+    .unwrap()
+    .join_and_assert()
+    .await;
 }

@@ -39,7 +39,8 @@ pub struct IteratorSourceInput<T: Clone, D: Data, DI: IntoIterator<Item=D>, I: I
 /// use timely::dataflow::operators::flow_controlled::{iterator_source, IteratorSourceInput};
 /// use timely::dataflow::operators::{probe, Probe, Inspect};
 ///
-/// timely::execute_from_args(std::env::args(), |worker| {
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+/// timely::execute_from_args(std::env::args(), async |worker| {
 ///     let mut input = (0u64..100000).peekable();
 ///     worker.dataflow(|scope| {
 ///         let mut probe_handle = probe::Handle::new();
@@ -67,7 +68,8 @@ pub struct IteratorSourceInput<T: Clone, D: Data, DI: IntoIterator<Item=D>, I: I
 ///         .inspect_time(|t, d| eprintln!("@ {:?}: {:?}", t, d))
 ///         .probe_with(&mut probe_handle);
 ///     });
-/// }).unwrap();
+/// }).await.unwrap().join_and_assert().await;
+/// # });
 /// ```
 pub fn iterator_source<
     G: Scope,

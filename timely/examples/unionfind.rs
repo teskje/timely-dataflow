@@ -7,14 +7,15 @@ use timely::dataflow::operators::{Input, Exchange, Probe};
 use timely::dataflow::operators::generic::operator::Operator;
 use timely::dataflow::channels::pact::Pipeline;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
     // command-line args: numbers of nodes and edges in the random graph.
     let nodes: usize = std::env::args().nth(1).unwrap().parse().unwrap();
     let edges: usize = std::env::args().nth(2).unwrap().parse().unwrap();
     let batch: usize = std::env::args().nth(3).unwrap().parse().unwrap();
 
-    timely::execute_from_args(std::env::args().skip(4), move |worker| {
+    timely::execute_from_args(std::env::args().skip(4), async move |worker| {
 
         let index = worker.index();
         let peers = worker.peers();
@@ -39,12 +40,12 @@ fn main() {
                 let next = input.epoch() + 1;
                 input.advance_to(next);
                 while probe.less_than(input.time()) {
-                    worker.step();
+                    worker.step().await;
                 }
             }
         }
 
-    }).unwrap(); // asserts error-free execution;
+    }).await.unwrap().join_and_assert().await;
 }
 
 trait UnionFind {

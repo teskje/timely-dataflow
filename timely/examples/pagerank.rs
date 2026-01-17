@@ -6,9 +6,10 @@ use timely::dataflow::operators::{Feedback, ConnectLoop, Probe};
 use timely::dataflow::operators::generic::Operator;
 use timely::dataflow::channels::pact::Exchange;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
-    timely::execute_from_args(std::env::args().skip(3), move |worker| {
+    timely::execute_from_args(std::env::args().skip(3), async move |worker| {
 
         let mut input = InputHandle::new();
         let probe = ProbeHandle::new();
@@ -165,7 +166,7 @@ fn main() {
         input.advance_to(1);
 
         while probe.less_than(input.time()) {
-            worker.step();
+            worker.step().await;
         }
 
         for i in 1 .. 1000 {
@@ -173,11 +174,11 @@ fn main() {
             input.send(((rng2.gen_range(0..nodes), rng2.gen_range(0..nodes)), -1));
             input.advance_to(i + 1);
             while probe.less_than(input.time()) {
-                worker.step();
+                worker.step().await;
             }
         }
 
-    }).unwrap(); // asserts error-free execution;
+    }).await.unwrap().join_and_assert().await;
 }
 
 fn compact<T: Ord>(list: &mut Vec<(T, i64)>) {

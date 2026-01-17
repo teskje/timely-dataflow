@@ -62,6 +62,7 @@ pub trait Map<S: Scope, C: DrainContainer> {
     /// use timely::dataflow::operators::{Capture, ToStream, core::Map};
     /// use timely::dataflow::operators::capture::Extract;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let data = timely::example(|scope| {
     ///     (0..10i32)
     ///         .to_stream(scope)
@@ -72,9 +73,10 @@ pub trait Map<S: Scope, C: DrainContainer> {
     ///         .map(Some)
     ///         .into_stream::<_,Vec<i32>>()
     ///         .capture()
-    /// });
+    /// }).await;
     ///
     /// assert_eq!((4..14).collect::<Vec<_>>(), data.extract()[0].1);
+    /// # });
     /// ```
     fn flat_map_builder<'t, I, L>(&'t self, logic: L) -> FlatMapBuilder<'t, Self, C, L, I>
     where
@@ -151,8 +153,8 @@ mod tests {
     use crate::dataflow::operators::{Capture, ToStream, core::Map};
     use crate::dataflow::operators::capture::Extract;
 
-    #[test]
-    fn test_builder() {
+    #[tokio::test(flavor = "local")]
+    async fn test_builder() {
         let data = crate::example(|scope| {
             let stream = (0..10i32).to_stream(scope);
             stream.flat_map_builder(|x| x + 1)
@@ -162,7 +164,7 @@ mod tests {
                 .map(Some)
                 .into_stream::<_,Vec<i32>>()
                 .capture()
-        });
+        }).await;
 
         assert_eq!((4..14).collect::<Vec<_>>(), data.extract()[0].1);
     }

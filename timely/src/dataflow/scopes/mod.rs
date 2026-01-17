@@ -85,7 +85,8 @@ pub trait Scope: ScopeParent {
     /// use timely::dataflow::operators::{Input, Enter, Leave};
     /// use timely::order::Product;
     ///
-    /// timely::execute_from_args(std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(std::env::args(), async |worker| {
     ///     // must specify types as nothing else drives inference.
     ///     let input = worker.dataflow::<u64,_,_>(|child1| {
     ///         let (input, stream) = child1.new_input::<String>();
@@ -94,7 +95,8 @@ pub trait Scope: ScopeParent {
     ///         });
     ///         input
     ///     });
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn scoped<T, R, F>(&mut self, name: &str, func: F) -> R
     where
@@ -112,7 +114,8 @@ pub trait Scope: ScopeParent {
     /// use timely::dataflow::Scope;
     /// use timely::dataflow::operators::{Input, Enter, Leave};
     ///
-    /// timely::execute_from_args(std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(std::env::args(), async |worker| {
     ///     // must specify types as nothing else drives inference.
     ///     let input = worker.dataflow::<u64,_,_>(|child1| {
     ///         let (input, stream) = child1.new_input::<String>();
@@ -121,7 +124,8 @@ pub trait Scope: ScopeParent {
     ///         });
     ///         input
     ///     });
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn iterative<T, R, F>(&mut self, func: F) -> R
     where
@@ -142,7 +146,8 @@ pub trait Scope: ScopeParent {
     /// use timely::dataflow::Scope;
     /// use timely::dataflow::operators::{Input, Enter, Leave};
     ///
-    /// timely::execute_from_args(std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(std::env::args(), async |worker| {
     ///     // must specify types as nothing else drives inference.
     ///     let input = worker.dataflow::<u64,_,_>(|child1| {
     ///         let (input, stream) = child1.new_input::<String>();
@@ -151,7 +156,8 @@ pub trait Scope: ScopeParent {
     ///         });
     ///         input
     ///     });
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn region<R, F>(&mut self, func: F) -> R
     where
@@ -174,7 +180,8 @@ pub trait Scope: ScopeParent {
     /// use timely::dataflow::Scope;
     /// use timely::dataflow::operators::{Input, Enter, Leave};
     ///
-    /// timely::execute_from_args(std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(std::env::args(), async |worker| {
     ///     // must specify types as nothing else drives inference.
     ///     let input = worker.dataflow::<u64,_,_>(|child1| {
     ///         let (input, stream) = child1.new_input::<String>();
@@ -183,7 +190,8 @@ pub trait Scope: ScopeParent {
     ///         });
     ///         input
     ///     });
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn region_named<R, F>(&mut self, name: &str, func: F) -> R
     where

@@ -131,12 +131,14 @@ impl Config {
     ///
     /// # Examples
     /// ```rust
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let mut config = timely::Config::process(3);
     /// config.worker.set("example".to_string(), 7u64);
-    /// timely::execute(config, |worker| {
+    /// timely::execute(config, async |worker| {
     ///    use crate::timely::worker::AsWorker;
     ///    assert_eq!(worker.config().get::<u64>("example"), Some(&7));
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn set<T>(&mut self, key: String, val: T) -> &mut Self
     where
@@ -154,12 +156,14 @@ impl Config {
     ///
     /// # Examples
     /// ```rust
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let mut config = timely::Config::process(3);
     /// config.worker.set("example".to_string(), 7u64);
-    /// timely::execute(config, |worker| {
+    /// timely::execute(config, async |worker| {
     ///    use crate::timely::worker::AsWorker;
     ///    assert_eq!(worker.config().get::<u64>("example"), Some(&7));
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn get<T: 'static>(&self, key: &str) -> Option<&T> {
         self.registry.get(key).and_then(|val| val.downcast_ref())
@@ -302,7 +306,8 @@ impl<A: Allocate> Worker<A> {
     /// # Examples
     ///
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     use timely::dataflow::operators::{ToStream, Inspect};
     ///
@@ -312,11 +317,12 @@ impl<A: Allocate> Worker<A> {
     ///             .inspect(|x| println!("{:?}", x));
     ///     });
     ///
-    ///     worker.step();
-    /// });
+    ///     worker.step().await;
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
-    pub fn step(&mut self) -> bool {
-        self.step_or_park(Some(Duration::from_secs(0)))
+    pub async fn step(&mut self) -> bool {
+        self.step_or_park(Some(Duration::from_secs(0))).await
     }
 
     /// Performs one step of the computation.
@@ -332,7 +338,8 @@ impl<A: Allocate> Worker<A> {
     /// # Examples
     ///
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     use std::time::Duration;
     ///     use timely::dataflow::operators::{ToStream, Inspect};
@@ -343,10 +350,11 @@ impl<A: Allocate> Worker<A> {
     ///             .inspect(|x| println!("{:?}", x));
     ///     });
     ///
-    ///     worker.step_or_park(Some(Duration::from_secs(1)));
-    /// });
+    ///     worker.step_or_park(Some(Duration::from_secs(1))).await;
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
-    pub fn step_or_park(&mut self, duration: Option<Duration>) -> bool {
+    pub async fn step_or_park(&mut self, duration: Option<Duration>) -> bool {
 
         {   // Process channel events. Activate responders.
             let mut allocator = self.allocator.borrow_mut();
@@ -393,7 +401,8 @@ impl<A: Allocate> Worker<A> {
 
             self.allocator
                 .borrow()
-                .await_events(delay);
+                .await_events(delay)
+                .await;
 
             // Log return from unpark.
             self.logging().as_mut().map(|l| l.log(crate::logging::ParkEvent::unpark()));
@@ -418,6 +427,8 @@ impl<A: Allocate> Worker<A> {
                         }
                         entry.remove_entry();
                     }
+
+                    tokio::task::yield_now().await;
                 }
             }
         }
@@ -438,7 +449,8 @@ impl<A: Allocate> Worker<A> {
     /// # Examples
     ///
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     use timely::dataflow::operators::{ToStream, Inspect, Probe};
     ///
@@ -450,11 +462,12 @@ impl<A: Allocate> Worker<A> {
     ///             .probe()
     ///     });
     ///
-    ///     worker.step_while(|| probe.less_than(&0));
-    /// });
+    ///     worker.step_while(|| probe.less_than(&0)).await;
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
-    pub fn step_while<F: FnMut()->bool>(&mut self, func: F) {
-        self.step_or_park_while(Some(Duration::from_secs(0)), func)
+    pub async fn step_while<F: FnMut()->bool>(&mut self, func: F) {
+        self.step_or_park_while(Some(Duration::from_secs(0)), func).await
     }
 
     /// Calls `self.step_or_park(duration)` as long as `func` evaluates to `true`.
@@ -467,7 +480,8 @@ impl<A: Allocate> Worker<A> {
     /// # Examples
     ///
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     use timely::dataflow::operators::{ToStream, Inspect, Probe};
     ///
@@ -479,18 +493,20 @@ impl<A: Allocate> Worker<A> {
     ///             .probe()
     ///     });
     ///
-    ///     worker.step_or_park_while(None, || probe.less_than(&0));
-    /// });
+    ///     worker.step_or_park_while(None, || probe.less_than(&0)).await;
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
-    pub fn step_or_park_while<F: FnMut()->bool>(&mut self, duration: Option<Duration>, mut func: F) {
-        while func() { self.step_or_park(duration); }
+    pub async fn step_or_park_while<F: FnMut()->bool>(&mut self, duration: Option<Duration>, mut func: F) {
+        while func() { self.step_or_park(duration).await; }
     }
 
     /// The index of the worker out of its peers.
     ///
     /// # Examples
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     let index = worker.index();
     ///     let peers = worker.peers();
@@ -498,14 +514,16 @@ impl<A: Allocate> Worker<A> {
     ///
     ///     println!("{:?}\tWorker {} of {}", timer.elapsed(), index, peers);
     ///
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn index(&self) -> usize { self.allocator.borrow().index() }
     /// The total number of peer workers.
     ///
     /// # Examples
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     let index = worker.index();
     ///     let peers = worker.peers();
@@ -513,7 +531,8 @@ impl<A: Allocate> Worker<A> {
     ///
     ///     println!("{:?}\tWorker {} of {}", timer.elapsed(), index, peers);
     ///
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn peers(&self) -> usize { self.allocator.borrow().peers() }
 
@@ -521,7 +540,8 @@ impl<A: Allocate> Worker<A> {
     ///
     /// # Examples
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     let index = worker.index();
     ///     let peers = worker.peers();
@@ -529,7 +549,8 @@ impl<A: Allocate> Worker<A> {
     ///
     ///     println!("{:?}\tWorker {} of {}", timer.elapsed(), index, peers);
     ///
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn timer(&self) -> Option<Instant> { self.timer }
 
@@ -552,14 +573,16 @@ impl<A: Allocate> Worker<A> {
     /// # Examples
     ///
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     worker.log_register()
     ///           .unwrap()
     ///           .insert::<timely::logging::TimelyEventBuilder,_>("timely", |time, data|
     ///               println!("{:?}\t{:?}", time, data)
     ///           );
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn log_register(&self) -> Option<RefMut<'_, crate::logging_core::Registry>> {
         self.logging.as_ref().map(|l| l.borrow_mut())
@@ -569,7 +592,8 @@ impl<A: Allocate> Worker<A> {
     ///
     /// # Examples
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     // We must supply the timestamp type here, although
     ///     // it would generally be determined by type inference.
@@ -578,7 +602,8 @@ impl<A: Allocate> Worker<A> {
     ///         // uses of `scope` to build dataflow
     ///
     ///     });
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn dataflow<T, R, F>(&mut self, func: F) -> R
     where
@@ -592,7 +617,8 @@ impl<A: Allocate> Worker<A> {
     ///
     /// # Examples
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     // We must supply the timestamp type here, although
     ///     // it would generally be determined by type inference.
@@ -601,7 +627,8 @@ impl<A: Allocate> Worker<A> {
     ///         // uses of `scope` to build dataflow
     ///
     ///     });
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn dataflow_named<T, R, F>(&mut self, name: &str, func: F) -> R
     where
@@ -620,7 +647,8 @@ impl<A: Allocate> Worker<A> {
     ///
     /// # Examples
     /// ```
-    /// timely::execute_from_args(::std::env::args(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute_from_args(::std::env::args(), async |worker| {
     ///
     ///     // We must supply the timestamp type here, although
     ///     // it would generally be determined by type inference.
@@ -634,7 +662,8 @@ impl<A: Allocate> Worker<A> {
     ///
     ///         }
     ///     );
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     pub fn dataflow_core<T, R, F, V>(&mut self, name: &str, mut logging: Option<TimelyLogger>, mut resources: V, func: F) -> R
     where

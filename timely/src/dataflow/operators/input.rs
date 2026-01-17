@@ -29,8 +29,9 @@ pub trait Input : Scope {
     /// use timely::*;
     /// use timely::dataflow::operators::{Input, Inspect};
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = worker.dataflow(|scope| {
@@ -43,9 +44,10 @@ pub trait Input : Scope {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
     /// });
+    /// # });
     /// ```
     fn new_input<D: Data>(&mut self) -> (Handle<<Self as ScopeParent>::Timestamp, D>, Stream<Self, D>);
 
@@ -61,8 +63,9 @@ pub trait Input : Scope {
     /// use timely::dataflow::operators::{Input, Inspect};
     /// use timely::dataflow::operators::input::Handle;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut input = Handle::new();
@@ -75,9 +78,10 @@ pub trait Input : Scope {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// });
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn input_from<D: Data>(&mut self, handle: &mut Handle<<Self as ScopeParent>::Timestamp, D>) -> Stream<Self, D>;
 }

@@ -7,14 +7,15 @@ use timely::dataflow::operators::{Input, Probe};
 use timely::dataflow::operators::generic::Operator;
 use timely::dataflow::channels::pact::Exchange;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
     // command-line args: numbers of nodes and edges in the random graph.
     let keys: u64 = std::env::args().nth(1).unwrap().parse().unwrap();
     let vals: usize = std::env::args().nth(2).unwrap().parse().unwrap();
     let batch: usize = std::env::args().nth(3).unwrap().parse().unwrap();
 
-    timely::execute_from_args(std::env::args().skip(4), move |worker| {
+    timely::execute_from_args(std::env::args().skip(4), async move |worker| {
 
         let index = worker.index();
         let peers = worker.peers();
@@ -92,11 +93,11 @@ fn main() {
             input1.advance_to(next);
             input2.advance_to(next);
             while probe.less_than(input1.time()) {
-                worker.step();
+                worker.step().await;
             }
 
             println!("{:?}\tworker {} batch complete", timer.elapsed(), index)
         }
 
-    }).unwrap(); // asserts error-free execution;
+    }).await.unwrap().join_and_assert().await;
 }

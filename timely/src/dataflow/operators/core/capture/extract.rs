@@ -20,11 +20,12 @@ pub trait Extract<T, C> {
     /// use timely::dataflow::operators::{Capture, ToStream, Inspect};
     /// use timely::dataflow::operators::capture::{EventLink, Replay, Extract};
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // get send and recv endpoints, wrap send to share
     /// let (send, recv) = ::std::sync::mpsc::channel();
     /// let send = Arc::new(Mutex::new(send));
     ///
-    /// timely::execute(timely::Config::thread(), move |worker| {
+    /// timely::execute(timely::Config::thread(), async move |worker| {
     ///
     ///     // this is only to validate the output.
     ///     let send = send.lock().unwrap().clone();
@@ -42,9 +43,10 @@ pub trait Extract<T, C> {
     ///         handle2.replay_into(scope2)
     ///                .capture_into(send)
     ///     });
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
     ///
     /// assert_eq!(recv.extract().into_iter().flat_map(|x| x.1).collect::<Vec<_>>(), (0..10).collect::<Vec<_>>());
+    /// # });
     /// ```
     fn extract(self) -> Vec<(T, C)>;
 }

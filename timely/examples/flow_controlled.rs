@@ -1,8 +1,9 @@
 use timely::dataflow::operators::flow_controlled::{iterator_source, IteratorSourceInput};
 use timely::dataflow::operators::{probe, Probe, Inspect};
 
-fn main() {
-    timely::execute_from_args(std::env::args(), |worker| {
+#[tokio::main(flavor = "local")]
+async fn main() {
+    timely::execute_from_args(std::env::args(), async |worker| {
         let mut input = (0u64..100000).peekable();
         worker.dataflow(|scope| {
             let probe_handle = probe::Handle::new();
@@ -29,5 +30,5 @@ fn main() {
             .inspect_time(|t, d| eprintln!("@ {:?}: {:?}", t, d))
             .probe_with(&probe_handle);
         });
-    }).unwrap();
+    }).await.unwrap().join_and_assert().await;
 }

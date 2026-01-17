@@ -33,11 +33,12 @@ pub trait UnorderedInput<G: Scope> {
     /// use timely::dataflow::operators::capture::Extract;
     /// use timely::dataflow::Stream;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // get send and recv endpoints, wrap send to share
     /// let (send, recv) = ::std::sync::mpsc::channel();
     /// let send = Arc::new(Mutex::new(send));
     ///
-    /// timely::execute(Config::thread(), move |worker| {
+    /// timely::execute(Config::thread(), async move |worker| {
     ///
     ///     // this is only to validate the output.
     ///     let send = send.lock().unwrap().clone();
@@ -53,14 +54,15 @@ pub trait UnorderedInput<G: Scope> {
     ///     for round in 0..10 {
     ///         input.activate().session(&cap).give(round);
     ///         cap = cap.delayed(&(round + 1));
-    ///         worker.step();
+    ///         worker.step().await;
     ///     }
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
     ///
     /// let extract = recv.extract();
     /// for i in 0..10 {
     ///     assert_eq!(extract[i], (i, vec![i]));
     /// }
+    /// # });
     /// ```
     fn new_unordered_input<D:Data>(&mut self) -> ((UnorderedHandle<G::Timestamp, D>, ActivateCapability<G::Timestamp>), Stream<G, D>);
 }

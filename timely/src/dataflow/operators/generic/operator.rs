@@ -28,6 +28,7 @@ pub trait Operator<G: Scope, C1> {
     /// use timely::dataflow::operators::generic::Operator;
     /// use timely::dataflow::channels::pact::Pipeline;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// timely::example(|scope| {
     ///     (0u64..10).to_stream(scope)
     ///         .unary_frontier(Pipeline, "example", |default_cap, _info| {
@@ -51,7 +52,8 @@ pub trait Operator<G: Scope, C1> {
     ///             }
     ///         })
     ///         .container::<Vec<_>>();
-    /// });
+    /// }).await;
+    /// # });
     /// ```
     fn unary_frontier<CB, B, L, P>(&self, pact: P, name: &str, constructor: B) -> StreamCore<G, CB::Container>
     where
@@ -72,6 +74,7 @@ pub trait Operator<G: Scope, C1> {
     /// use timely::dataflow::operators::generic::Operator;
     /// use timely::dataflow::channels::pact::Pipeline;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// timely::example(|scope| {
     ///     (0u64..10)
     ///         .to_stream(scope)
@@ -84,7 +87,8 @@ pub trait Operator<G: Scope, C1> {
     ///                 println!("notified at {:?}", time);
     ///             });
     ///         });
-    /// });
+    /// }).await;
+    /// # });
     /// ```
     fn unary_notify<CB: ContainerBuilder,
             L: FnMut(InputSession<'_, G::Timestamp, C1, P::Puller>,
@@ -138,7 +142,8 @@ pub trait Operator<G: Scope, C1> {
     /// use timely::dataflow::operators::generic::operator::Operator;
     /// use timely::dataflow::channels::pact::Pipeline;
     ///
-    /// timely::execute(timely::Config::thread(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute(timely::Config::thread(), async |worker| {
     ///    let (mut in1, mut in2) = worker.dataflow::<usize,_,_>(|scope| {
     ///        let (in1_handle, in1) = scope.new_input();
     ///        let (in2_handle, in2) = scope.new_input();
@@ -173,7 +178,8 @@ pub trait Operator<G: Scope, C1> {
     ///        in2.send(i - 1);
     ///        in2.advance_to(i);
     ///    }
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn binary_frontier<C2, CB, B, L, P1, P2>(&self, other: &StreamCore<G, C2>, pact1: P1, pact2: P2, name: &str, constructor: B) -> StreamCore<G, CB::Container>
     where
@@ -197,7 +203,8 @@ pub trait Operator<G: Scope, C1> {
     /// use timely::dataflow::operators::generic::operator::Operator;
     /// use timely::dataflow::channels::pact::Pipeline;
     ///
-    /// timely::execute(timely::Config::thread(), |worker| {
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+    /// timely::execute(timely::Config::thread(), async |worker| {
     ///    let (mut in1, mut in2) = worker.dataflow::<usize,_,_>(|scope| {
     ///        let (in1_handle, in1) = scope.new_input();
     ///        let (in2_handle, in2) = scope.new_input();
@@ -225,7 +232,8 @@ pub trait Operator<G: Scope, C1> {
     ///        in2.send(i - 1);
     ///        in2.advance_to(i);
     ///    }
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn binary_notify<C2: Container,
               CB: ContainerBuilder,

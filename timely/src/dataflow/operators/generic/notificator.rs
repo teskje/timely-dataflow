@@ -184,7 +184,8 @@ fn notificator_delivers_notifications_in_topo_order() {
 /// use timely::dataflow::operators::generic::operator::Operator;
 /// use timely::dataflow::channels::pact::Pipeline;
 ///
-/// timely::execute(timely::Config::thread(), |worker| {
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
+/// timely::execute(timely::Config::thread(), async |worker| {
 ///     let (mut in1, mut in2) = worker.dataflow::<usize,_,_>(|scope| {
 ///         let (in1_handle, in1) = scope.new_input();
 ///         let (in2_handle, in2) = scope.new_input();
@@ -221,7 +222,8 @@ fn notificator_delivers_notifications_in_topo_order() {
 ///     }
 ///     in1.close();
 ///     in2.close();
-/// }).unwrap();
+/// }).await.unwrap().join_and_assert().await;
+/// # });
 /// ```
 #[derive(Debug)]
 pub struct FrontierNotificator<T: Timestamp> {

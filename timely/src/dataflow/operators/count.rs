@@ -16,14 +16,16 @@ pub trait Accumulate<G: Scope, D: Data> {
     /// use timely::dataflow::operators::{ToStream, Accumulate, Capture};
     /// use timely::dataflow::operators::capture::Extract;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let captured = timely::example(|scope| {
     ///     (0..10).to_stream(scope)
     ///            .accumulate(0, |sum, data| { for &x in data.iter() { *sum += x; } })
     ///            .capture()
-    /// });
+    /// }).await;
     ///
     /// let extracted = captured.extract();
     /// assert_eq!(extracted, vec![(0, vec![45])]);
+    /// # });
     /// ```
     fn accumulate<A: Data>(&self, default: A, logic: impl Fn(&mut A, &mut Vec<D>)+'static) -> Stream<G, A>;
     /// Counts the number of records observed at each time.
@@ -34,14 +36,16 @@ pub trait Accumulate<G: Scope, D: Data> {
     /// use timely::dataflow::operators::{ToStream, Accumulate, Capture};
     /// use timely::dataflow::operators::capture::Extract;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let captured = timely::example(|scope| {
     ///     (0..10).to_stream(scope)
     ///            .count()
     ///            .capture()
-    /// });
+    /// }).await;
     ///
     /// let extracted = captured.extract();
     /// assert_eq!(extracted, vec![(0, vec![10])]);
+    /// # });
     /// ```
     fn count(&self) -> Stream<G, usize> {
         self.accumulate(0, |sum, data| *sum += data.len())

@@ -2,11 +2,14 @@
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::thread::Thread;
 use std::collections::BinaryHeap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::cmp::Reverse;
-use std::sync::mpsc::{Sender, Receiver};
+
+use timely_communication::current_task_notify;
+use tokio::sync::Notify;
+use tokio::sync::mpsc::{UnboundedSender as Sender, UnboundedReceiver as Receiver};
 
 /// Methods required to act as a timely scheduler.
 ///
@@ -56,7 +59,7 @@ impl Activations {
 
     /// Creates a new activation tracker.
     pub fn new(timer: Option<Instant>) -> Self {
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             clean: 0,
             bounds: Vec::new(),
@@ -170,7 +173,7 @@ impl Activations {
     pub fn sync(&self) -> SyncActivations {
         SyncActivations {
             tx: self.tx.clone(),
-            thread: std::thread::current(),
+            notify: current_task_notify(),
         }
     }
 
@@ -197,7 +200,7 @@ impl Activations {
 #[derive(Clone, Debug)]
 pub struct SyncActivations {
     tx: Sender<Vec<usize>>,
-    thread: Thread,
+    notify: Arc<Notify>,
 }
 
 impl SyncActivations {
@@ -219,7 +222,7 @@ impl SyncActivations {
         for path in paths.into_iter() {
             self.tx.send(path).map_err(|_| SyncActivationError)?;
         }
-        self.thread.unpark();
+        self.notify.notify_one();
         Ok(())
     }
 }

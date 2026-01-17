@@ -24,8 +24,9 @@ pub trait Probe<G: Scope, C: Container> {
     /// use timely::dataflow::Scope;
     /// use timely::dataflow::operators::{Input, Probe, Inspect};
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let (mut input, probe) = worker.dataflow(|scope| {
@@ -39,9 +40,10 @@ pub trait Probe<G: Scope, C: Container> {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step_while(|| probe.less_than(input.time()));
+    ///         worker.step_while(|| probe.less_than(input.time())).await;
     ///     }
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn probe(&self) -> Handle<G::Timestamp>;
 
@@ -54,8 +56,9 @@ pub trait Probe<G: Scope, C: Container> {
     /// use timely::dataflow::operators::{Input, Probe, Inspect};
     /// use timely::dataflow::operators::probe::Handle;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// // construct and execute a timely dataflow
-    /// timely::execute(Config::thread(), |worker| {
+    /// timely::execute(Config::thread(), async |worker| {
     ///
     ///     // add an input and base computation off of it
     ///     let mut probe = Handle::new();
@@ -71,9 +74,10 @@ pub trait Probe<G: Scope, C: Container> {
     ///     for round in 0..10 {
     ///         input.send(round);
     ///         input.advance_to(round + 1);
-    ///         worker.step_while(|| probe.less_than(input.time()));
+    ///         worker.step_while(|| probe.less_than(input.time())).await;
     ///     }
-    /// }).unwrap();
+    /// }).await.unwrap().join_and_assert().await;
+    /// # });
     /// ```
     fn probe_with(&self, handle: &Handle<G::Timestamp>) -> StreamCore<G, C>;
 }
@@ -189,11 +193,11 @@ mod tests {
     use crate::Config;
     use crate::dataflow::operators::{Input, Probe};
 
-    #[test]
-    fn probe() {
+    #[tokio::test(flavor = "local")]
+    async fn probe() {
 
         // initializes and runs a timely dataflow computation
-        crate::execute(Config::thread(), |worker| {
+        crate::execute(Config::thread(), async |worker| {
 
             // create a new input, and inspect its output
             let (mut input, probe) = worker.dataflow(move |scope| {
@@ -207,19 +211,19 @@ mod tests {
                 assert!(probe.less_equal(&round));
                 assert!(probe.less_than(&(round + 1)));
                 input.advance_to(round + 1);
-                worker.step();
+                worker.step().await;
             }
 
             // seal the input
             input.close();
 
             // finish off any remaining work
-            worker.step();
-            worker.step();
-            worker.step();
-            worker.step();
+            worker.step().await;
+            worker.step().await;
+            worker.step().await;
+            worker.step().await;
             assert!(probe.done());
-        }).unwrap();
+        }).await.unwrap().join_and_assert().await;
     }
 
 }

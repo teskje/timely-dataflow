@@ -2,7 +2,8 @@ use timely::dataflow::{InputHandle, ProbeHandle};
 use timely::dataflow::operators::{Inspect, Probe};
 use timely::WorkerConfig;
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
 
     // create a naked single-threaded worker.
     let allocator = timely::communication::allocator::Thread::default();
@@ -25,7 +26,7 @@ fn main() {
         input.send(i);
         input.advance_to(i);
         while probe.less_than(input.time()) {
-            worker.step();
+            worker.step().await;
         }
     }
 }

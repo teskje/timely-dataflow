@@ -14,13 +14,15 @@ pub trait ToStream<D: Data> {
     /// use timely::dataflow::operators::{ToStream, Capture};
     /// use timely::dataflow::operators::capture::Extract;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let (data1, data2) = timely::example(|scope| {
     ///     let data1 = (0..3).to_stream(scope).capture();
     ///     let data2 = vec![0,1,2].to_stream(scope).capture();
     ///     (data1, data2)
-    /// });
+    /// }).await;
     ///
     /// assert_eq!(data1.extract(), data2.extract());
+    /// # });
     /// ```
     fn to_stream<S: Scope>(self, scope: &mut S) -> Stream<S, D>;
 }

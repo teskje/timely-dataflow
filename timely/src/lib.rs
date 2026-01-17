@@ -25,8 +25,9 @@
 //! use timely::*;
 //! use timely::dataflow::operators::{Input, Inspect};
 //!
+//! # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 //! // construct and execute a timely dataflow
-//! timely::execute_from_args(std::env::args(), |worker| {
+//! timely::execute_from_args(std::env::args(), async |worker| {
 //!
 //!     // add an input and base computation off of it
 //!     let mut input = worker.dataflow(|scope| {
@@ -39,9 +40,10 @@
 //!     for round in 0..10 {
 //!         input.send(round);
 //!         input.advance_to(round + 1);
-//!         worker.step();
+//!         worker.step().await;
 //!     }
-//! });
+//! }).await.unwrap().join_and_assert().await;
+//! # });
 //! ```
 //!
 //! The program uses `timely::execute_from_args` to spin up a computation based on command line arguments

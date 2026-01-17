@@ -22,6 +22,7 @@ pub trait Reclock<S: Scope> {
     /// use timely::dataflow::operators::{ToStream, Delay, Map, Reclock, Capture};
     /// use timely::dataflow::operators::capture::Extract;
     ///
+    /// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
     /// let captured = timely::example(|scope| {
     ///
     ///     // produce data 0..10 at times 0..10.
@@ -37,13 +38,14 @@ pub trait Reclock<S: Scope> {
     ///     // reclock the data.
     ///     data.reclock(&clock)
     ///         .capture()
-    /// });
+    /// }).await;
     ///
     /// let extracted = captured.extract();
     /// assert_eq!(extracted.len(), 3);
     /// assert_eq!(extracted[0], (3, vec![0,1,2,3]));
     /// assert_eq!(extracted[1], (5, vec![4,5]));
     /// assert_eq!(extracted[2], (8, vec![6,7,8]));
+    /// # });
     /// ```
     fn reclock<TC: Container>(&self, clock: &StreamCore<S, TC>) -> Self;
 }

@@ -7,9 +7,10 @@ pub struct Test {
     _field: Rc<usize>,
 }
 
-fn main() {
+#[tokio::main(flavor = "local")]
+async fn main() {
     // initializes and runs a timely dataflow.
-    timely::execute_from_args(std::env::args(), |worker| {
+    timely::execute_from_args(std::env::args(), async |worker| {
         // create a new input, exchange data, and inspect its output
         let index = worker.index();
         let mut input = InputHandle::new();
@@ -25,7 +26,7 @@ fn main() {
         for round in 0..10 {
             input.send(Test { _field: Rc::new(round) } );
             input.advance_to(round + 1);
-            worker.step_while(|| probe.less_than(input.time()));
+            worker.step_while(|| probe.less_than(input.time())).await;
         }
-    }).unwrap();
+    }).await.unwrap().join_and_assert().await;
 }
