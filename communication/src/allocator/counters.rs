@@ -2,7 +2,8 @@
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::sync::mpsc::Sender;
+
+use tokio::sync::mpsc::UnboundedSender as Sender;
 
 use crate::{Push, Pull};
 

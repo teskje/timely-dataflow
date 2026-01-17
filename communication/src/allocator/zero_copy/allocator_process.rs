@@ -3,13 +3,13 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{VecDeque, HashMap, hash_map::Entry};
-use std::sync::mpsc::{Sender, Receiver};
 
 use timely_bytes::arc::Bytes;
+use tokio::sync::mpsc::{UnboundedSender as Sender, UnboundedReceiver as Receiver};
 
 use crate::networking::MessageHeader;
 
-use crate::{Allocate, Push, Pull};
+use crate::{Allocate, Pull, Push, park_task};
 use crate::allocator::{AllocateBuilder, Exchangeable, PeerBuilder};
 use crate::allocator::canary::Canary;
 use crate::allocator::zero_copy::bytes_slab::BytesRefill;
@@ -60,7 +60,7 @@ impl PeerBuilder for ProcessBuilder {
 
 impl ProcessBuilder {
     /// Builds a `ProcessAllocator`, instantiating `Rc<RefCell<_>>` elements.
-    pub fn build(self) -> ProcessAllocator {
+    pub async fn build(self) -> ProcessAllocator {
 
         // Fulfill puller obligations.
         let mut recvs = Vec::with_capacity(self.peers);
@@ -73,8 +73,8 @@ impl ProcessBuilder {
 
         // Extract pusher commitments.
         let mut sends = Vec::with_capacity(self.peers);
-        for pusher in self.pushers.into_iter() {
-            let queue = pusher.recv().expect("Failed to receive MergeQueue");
+        for mut pusher in self.pushers.into_iter() {
+            let queue = pusher.recv().await.expect("Failed to receive MergeQueue");
             let sendpoint = SendEndpoint::new(queue, self.refill.clone());
             sends.push(Rc::new(RefCell::new(sendpoint)));
         }
@@ -96,8 +96,8 @@ impl ProcessBuilder {
 impl AllocateBuilder for ProcessBuilder {
     type Allocator = ProcessAllocator;
     /// Builds allocator, consumes self.
-    fn build(self) -> Self::Allocator {
-        self.build()
+    async fn build(self) -> Self::Allocator {
+        self.build().await
     }
 
 }
@@ -242,14 +242,9 @@ impl Allocate for ProcessAllocator {
     fn events(&self) -> &Rc<RefCell<Vec<usize>>> {
         &self.events
     }
-    fn await_events(&self, duration: Option<std::time::Duration>) {
+    async fn await_events(&self, duration: Option<std::time::Duration>) {
         if self.events.borrow().is_empty() {
-            if let Some(duration) = duration {
-                std::thread::park_timeout(duration);
-            }
-            else {
-                std::thread::park();
-            }
+            park_task(duration).await;
         }
     }
 }

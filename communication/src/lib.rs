@@ -36,10 +36,11 @@
 //!         writer.write_all(self.payload.as_bytes()).unwrap();
 //!     }
 //! }
-//!
+//! 
+//! # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 //! // extract the configuration from user-supplied arguments, initialize the computation.
 //! let config = timely_communication::Config::from_args(std::env::args()).unwrap();
-//! let guards = timely_communication::initialize(config, |mut allocator| {
+//! let guards = timely_communication::initialize(config, async |mut allocator| {
 //!
 //!     println!("worker {} of {} started", allocator.index(), allocator.peers());
 //!
@@ -62,21 +63,24 @@
 //!         if let Some(message) = receiver.recv() {
 //!             println!("worker {}: received: <{}>", allocator.index(), message.payload);
 //!             received += 1;
+//!         } else {
+//!             tokio::task::yield_now().await;
 //!         }
 //!
 //!         allocator.release();
 //!     }
 //!
 //!     allocator.index()
-//! });
+//! }).await;
 //!
 //! // computation runs until guards are joined or dropped.
 //! if let Ok(guards) = guards {
-//!     for guard in guards.join() {
+//!     for guard in guards.join().await {
 //!         println!("result: {:?}", guard);
 //!     }
 //! }
 //! else { println!("error in computation"); }
+//! # })
 //! ```
 //!
 //! This should produce output like:
@@ -93,6 +97,7 @@
 //! ```
 
 #![forbid(missing_docs)]
+#![allow(async_fn_in_trait)]
 
 pub mod allocator;
 pub mod networking;
@@ -100,13 +105,42 @@ pub mod initialize;
 pub mod logging;
 pub mod buzzer;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
 pub use allocator::Generic as Allocator;
 pub use allocator::{Allocate, Exchangeable};
 pub use initialize::{initialize, initialize_from, Config, WorkerGuards};
 
-use std::sync::mpsc::{Sender, Receiver};
-
 use timely_bytes::arc::Bytes;
+use tokio::sync::Notify;
+use tokio::sync::mpsc::{UnboundedSender as Sender, UnboundedReceiver as Receiver};
+
+thread_local! {
+    static TASK_NOTIFIES: RefCell<HashMap<tokio::task::Id, Arc<Notify>>> = Default::default();
+}
+
+/// Return a Notify for the current task.
+pub fn current_task_notify() -> Arc<Notify> {
+    let id = tokio::task::id();
+    TASK_NOTIFIES.with_borrow_mut(|notifies| {
+        let notify = notifies
+            .entry(id)
+            .or_insert_with(|| Arc::new(Notify::new()));
+        Arc::clone(notify)
+    })
+}
+
+async fn park_task(duration: Option<Duration>) {
+    let notify = current_task_notify();
+    if let Some(duration) = duration {
+        let _ = tokio::time::timeout(duration, notify.notified()).await;
+    } else {
+        notify.notified().await;
+    }
+}
 
 /// A type that can be serialized and deserialized through `Bytes`.
 pub trait Bytesable {
@@ -180,7 +214,7 @@ fn promise_futures<T>(sends: usize, recvs: usize) -> (Vec<Vec<Sender<T>>>, Vec<V
 
     for sender in senders.iter_mut() {
         for recver in recvers.iter_mut() {
-            let (send, recv) = std::sync::mpsc::channel();
+            let (send, recv) = tokio::sync::mpsc::unbounded_channel();
             sender.push(send);
             recver.push(recv);
         }

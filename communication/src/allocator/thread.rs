@@ -8,14 +8,14 @@ use std::collections::VecDeque;
 use crate::allocator::{Allocate, AllocateBuilder};
 use crate::allocator::counters::Pusher as CountPusher;
 use crate::allocator::counters::Puller as CountPuller;
-use crate::{Push, Pull};
+use crate::{Pull, Push, park_task};
 
 /// Builder for single-threaded allocator.
 pub struct ThreadBuilder;
 
 impl AllocateBuilder for ThreadBuilder {
     type Allocator = Thread;
-    fn build(self) -> Self::Allocator { Thread::default() }
+    async fn build(self) -> Self::Allocator { Thread::default() }
 }
 
 
@@ -36,14 +36,9 @@ impl Allocate for Thread {
     fn events(&self) -> &Rc<RefCell<Vec<usize>>> {
         &self.events
     }
-    fn await_events(&self, duration: Option<Duration>) {
+    async fn await_events(&self, duration: Option<Duration>) {
         if self.events.borrow().is_empty() {
-            if let Some(duration) = duration {
-                std::thread::park_timeout(duration);
-            }
-            else {
-                std::thread::park();
-            }
+            park_task(duration).await;
         }
     }
 }

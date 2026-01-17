@@ -1,47 +1,36 @@
 //! Abstractions over network streams.
 
-use std::io;
-use std::net::{TcpStream, Shutdown};
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::{tcp, TcpStream};
 #[cfg(unix)]
-use std::os::unix::net::UnixStream;
+use tokio::net::{unix, UnixStream};
 
 /// An abstraction over network streams.
-pub trait Stream: Sized + Send + Sync + io::Read + io::Write {
-    /// Creates a new independently owned handle to the underlying stream.
-    fn try_clone(&self) -> io::Result<Self>;
+pub trait Stream: Sized + Send + Sync + AsyncRead + AsyncWrite + Unpin {
+    /// Stream read half.
+    type ReadHalf: Sized + Send + Sync + AsyncRead + Unpin;
+    /// Stream write half.
+    type WriteHalf: Sized + Send + Sync + AsyncWrite + Unpin;
 
-    /// Moves this stream into or out of nonblocking mode.
-    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()>;
-
-    /// Shuts down the read, write, or both halves of this connection.
-    fn shutdown(&self, how: Shutdown) -> io::Result<()>;
+    /// Split the stream into read half and write half.
+    fn split(self) -> (Self::ReadHalf, Self::WriteHalf);
 }
 
 impl Stream for TcpStream {
-    fn try_clone(&self) -> io::Result<Self> {
-        self.try_clone()
-    }
+    type ReadHalf = tcp::OwnedReadHalf;
+    type WriteHalf = tcp::OwnedWriteHalf;
 
-    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.set_nonblocking(nonblocking)
-    }
-
-    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        self.shutdown(how)
+    fn split(self) -> (Self::ReadHalf, Self::WriteHalf) {
+        self.into_split()
     }
 }
 
 #[cfg(unix)]
 impl Stream for UnixStream {
-    fn try_clone(&self) -> io::Result<Self> {
-        self.try_clone()
-    }
+    type ReadHalf = unix::OwnedReadHalf;
+    type WriteHalf = unix::OwnedWriteHalf;
 
-    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.set_nonblocking(nonblocking)
-    }
-
-    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        self.shutdown(how)
+    fn split(self) -> (Self::ReadHalf, Self::WriteHalf) {
+        self.into_split()
     }
 }

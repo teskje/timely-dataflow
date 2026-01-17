@@ -1,16 +1,16 @@
 //! Networking code for sending and receiving fixed size `Vec<u8>` between machines.
 
 use std::io;
-use std::io::{Read, Result};
-use std::net::{TcpListener, TcpStream};
+use std::io::Result;
 use std::sync::Arc;
-use std::thread;
-use std::thread::sleep;
 use std::time::Duration;
 
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use columnar::Columnar;
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::time::sleep;
 
 // This constant is sent along immediately after establishing a TCP stream, so
 // that it is easy to sniff out Timely traffic when it is multiplexed with
@@ -76,12 +76,12 @@ impl MessageHeader {
         let mut buffer = [0u8; std::mem::size_of::<u64>() * Self::FIELDS];
         let mut cursor = io::Cursor::new(&mut buffer[..]);
         // Order must match reading order.
-        cursor.write_u64::<ByteOrder>(self.channel as u64)?;
-        cursor.write_u64::<ByteOrder>(self.source as u64)?;
-        cursor.write_u64::<ByteOrder>(self.target_lower as u64)?;
-        cursor.write_u64::<ByteOrder>(self.target_upper as u64)?;
-        cursor.write_u64::<ByteOrder>(self.length as u64)?;
-        cursor.write_u64::<ByteOrder>(self.seqno as u64)?;
+        WriteBytesExt::write_u64::<ByteOrder>(&mut cursor, self.channel as u64)?;
+        WriteBytesExt::write_u64::<ByteOrder>(&mut cursor, self.source as u64)?;
+        WriteBytesExt::write_u64::<ByteOrder>(&mut cursor, self.target_lower as u64)?;
+        WriteBytesExt::write_u64::<ByteOrder>(&mut cursor, self.target_upper as u64)?;
+        WriteBytesExt::write_u64::<ByteOrder>(&mut cursor, self.length as u64)?;
+        WriteBytesExt::write_u64::<ByteOrder>(&mut cursor, self.seqno as u64)?;
 
         writer.write_all(&buffer[..])
     }
@@ -103,17 +103,17 @@ impl MessageHeader {
 ///
 /// The item at index `i` in the resulting vec, is a `Some(TcpSocket)` to process `i`, except
 /// for item `my_index` which is `None` (no socket to self).
-pub fn create_sockets(addresses: Vec<String>, my_index: usize, noisy: bool) -> Result<Vec<Option<TcpStream>>> {
+pub async fn create_sockets(addresses: Vec<String>, my_index: usize, noisy: bool) -> Result<Vec<Option<TcpStream>>> {
 
     let hosts1 = Arc::new(addresses);
     let hosts2 = Arc::clone(&hosts1);
 
-    let start_task = thread::spawn(move || start_connections(hosts1, my_index, noisy));
-    let await_task = thread::spawn(move || await_connections(hosts2, my_index, noisy));
+    let start_task = tokio::task::spawn_local(start_connections(hosts1, my_index, noisy));
+    let await_task = tokio::task::spawn_local(await_connections(hosts2, my_index, noisy));
 
-    let mut results = start_task.join().unwrap()?;
+    let mut results = start_task.await.unwrap()?;
     results.push(None);
-    let to_extend = await_task.join().unwrap()?;
+    let to_extend = await_task.await.unwrap()?;
     results.extend(to_extend);
 
     if noisy { println!("worker {}:\tinitialization complete", my_index) }
@@ -123,45 +123,47 @@ pub fn create_sockets(addresses: Vec<String>, my_index: usize, noisy: bool) -> R
 
 
 /// Result contains connections `[0, my_index - 1]`.
-pub fn start_connections(addresses: Arc<Vec<String>>, my_index: usize, noisy: bool) -> Result<Vec<Option<TcpStream>>> {
-    let results = addresses.iter().take(my_index).enumerate().map(|(index, address)| {
-        loop {
-            match TcpStream::connect(address) {
+pub async fn start_connections(addresses: Arc<Vec<String>>, my_index: usize, noisy: bool) -> Result<Vec<Option<TcpStream>>> {
+    let mut results = Vec::new();
+    for (index, address) in addresses.iter().take(my_index).enumerate() {
+        let res = loop {
+            match TcpStream::connect(address).await {
                 Ok(mut stream) => {
                     stream.set_nodelay(true).expect("set_nodelay call failed");
-                    stream.write_u64::<ByteOrder>(HANDSHAKE_MAGIC).expect("failed to encode/send handshake magic");
-                    stream.write_u64::<ByteOrder>(my_index as u64).expect("failed to encode/send worker index");
+                    stream.write_u64(HANDSHAKE_MAGIC).await.expect("failed to encode/send handshake magic");
+                    stream.write_u64(my_index as u64).await.expect("failed to encode/send worker index");
                     if noisy { println!("worker {}:\tconnection to worker {}", my_index, index); }
                     break Some(stream);
                 },
                 Err(error) => {
                     println!("worker {}:\terror connecting to worker {}: {}; retrying", my_index, index, error);
-                    sleep(Duration::from_secs(1));
+                    sleep(Duration::from_secs(1)).await;
                 },
             }
-        }
-    }).collect();
+        };
+        results.push(res);
+    }
 
     Ok(results)
 }
 
 /// Result contains connections `[my_index + 1, addresses.len() - 1]`.
-pub fn await_connections(addresses: Arc<Vec<String>>, my_index: usize, noisy: bool) -> Result<Vec<Option<TcpStream>>> {
+pub async fn await_connections(addresses: Arc<Vec<String>>, my_index: usize, noisy: bool) -> Result<Vec<Option<TcpStream>>> {
     let mut results: Vec<_> = (0..(addresses.len() - my_index - 1)).map(|_| None).collect();
-    let listener = TcpListener::bind(&addresses[my_index][..])?;
+    let listener = TcpListener::bind(&addresses[my_index][..]).await?;
 
     for _ in (my_index + 1) .. addresses.len() {
-        let mut stream = listener.accept()?.0;
+        let mut stream = listener.accept().await?.0;
         stream.set_nodelay(true).expect("set_nodelay call failed");
         let mut buffer = [0u8;16];
-        stream.read_exact(&mut buffer)?;
+        stream.read_exact(&mut buffer).await?;
         let mut cursor = io::Cursor::new(buffer);
-        let magic = cursor.read_u64::<ByteOrder>().expect("failed to decode magic");
+        let magic = ReadBytesExt::read_u64::<ByteOrder>(&mut cursor).expect("failed to decode magic");
         if magic != HANDSHAKE_MAGIC {
             return Err(io::Error::new(io::ErrorKind::InvalidData,
                 "received incorrect timely handshake"));
         }
-        let identifier = cursor.read_u64::<ByteOrder>().expect("failed to decode worker index") as usize;
+        let identifier = ReadBytesExt::read_u64::<ByteOrder>(&mut cursor).expect("failed to decode worker index") as usize;
         results[identifier - my_index - 1] = Some(stream);
         if noisy { println!("worker {}:\tconnection from worker {}", my_index, identifier); }
     }

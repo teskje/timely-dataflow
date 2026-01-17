@@ -6,7 +6,8 @@ use std::sync::{Arc, Mutex};
 use std::any::Any;
 use std::time::Duration;
 use std::collections::{HashMap};
-use std::sync::mpsc::{Sender, Receiver};
+
+use tokio::sync::mpsc::{UnboundedSender as Sender, UnboundedReceiver as Receiver};
 
 use crate::allocator::thread::{ThreadBuilder};
 use crate::allocator::{Allocate, AllocateBuilder, PeerBuilder, Thread};
@@ -31,7 +32,7 @@ pub struct ProcessBuilder {
 
 impl AllocateBuilder for ProcessBuilder {
     type Allocator = Process;
-    fn build(self) -> Self::Allocator {
+    async fn build(mut self) -> Self::Allocator {
 
         // Initialize buzzers; send first, then recv.
         for worker in self.buzzers_send.iter() {
@@ -39,12 +40,12 @@ impl AllocateBuilder for ProcessBuilder {
             worker.send(buzzer).expect("Failed to send buzzer");
         }
         let mut buzzers = Vec::with_capacity(self.buzzers_recv.len());
-        for worker in self.buzzers_recv.iter() {
-            buzzers.push(worker.recv().expect("Failed to recv buzzer"));
+        for worker in self.buzzers_recv.iter_mut() {
+            buzzers.push(worker.recv().await.expect("Failed to recv buzzer"));
         }
 
         Process {
-            inner: self.inner.build(),
+            inner: self.inner.build().await,
             index: self.index,
             peers: self.peers,
             channels: self.channels,
@@ -80,7 +81,7 @@ impl PeerBuilder for Process {
         let mut counters_send = Vec::with_capacity(peers);
         let mut counters_recv = Vec::with_capacity(peers);
         for _ in 0 .. peers {
-            let (send, recv) = std::sync::mpsc::channel();
+            let (send, recv) = tokio::sync::mpsc::unbounded_channel();
             counters_send.push(send);
             counters_recv.push(recv);
         }
@@ -130,7 +131,7 @@ impl Allocate for Process {
                 let mut pushers = Vec::with_capacity(self.peers);
                 let mut pullers = Vec::with_capacity(self.peers);
                 for buzzer in self.buzzers.iter() {
-                    let (s, r): (Sender<T>, Receiver<T>) = std::sync::mpsc::channel();
+                    let (s, r): (Sender<T>, Receiver<T>) = tokio::sync::mpsc::unbounded_channel();
                     // TODO: the buzzer in the pusher may be redundant, because we need to buzz post-counter.
                     pushers.push((Pusher { target: s }, buzzer.clone()));
                     pullers.push(Puller { source: r, current: None });
@@ -182,8 +183,8 @@ impl Allocate for Process {
         self.inner.events()
     }
 
-    fn await_events(&self, duration: Option<Duration>) {
-        self.inner.await_events(duration);
+    async fn await_events(&self, duration: Option<Duration>) {
+        self.inner.await_events(duration).await;
     }
 
     fn receive(&mut self) {

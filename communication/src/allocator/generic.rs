@@ -113,13 +113,13 @@ impl Allocate for Generic {
     fn receive(&mut self) { self.receive(); }
     fn release(&mut self) { self.release(); }
     fn events(&self) -> &Rc<RefCell<Vec<usize>>> { self.events() }
-    fn await_events(&self, _duration: Option<std::time::Duration>) {
+    async fn await_events(&self, _duration: Option<std::time::Duration>) {
         match self {
-            Generic::Thread(t) => t.await_events(_duration),
-            Generic::Process(p) => p.await_events(_duration),
-            Generic::ProcessBinary(pb) => pb.await_events(_duration),
-            Generic::ZeroCopy(z) => z.await_events(_duration),
-            Generic::ZeroCopyBinary(z) => z.await_events(_duration),
+            Generic::Thread(t) => t.await_events(_duration).await,
+            Generic::Process(p) => p.await_events(_duration).await,
+            Generic::ProcessBinary(pb) => pb.await_events(_duration).await,
+            Generic::ZeroCopy(z) => z.await_events(_duration).await,
+            Generic::ZeroCopyBinary(z) => z.await_events(_duration).await,
         }
     }
 }
@@ -145,13 +145,13 @@ pub enum GenericBuilder {
 
 impl AllocateBuilder for GenericBuilder {
     type Allocator = Generic;
-    fn build(self) -> Generic {
+    async fn build(self) -> Generic {
         match self {
-            GenericBuilder::Thread(t) => Generic::Thread(t.build()),
-            GenericBuilder::Process(p) => Generic::Process(p.build()),
-            GenericBuilder::ProcessBinary(pb) => Generic::ProcessBinary(pb.build()),
-            GenericBuilder::ZeroCopy(z) => Generic::ZeroCopy(z.build()),
-            GenericBuilder::ZeroCopyBinary(z) => Generic::ZeroCopyBinary(z.build()),
+            GenericBuilder::Thread(t) => Generic::Thread(t.build().await),
+            GenericBuilder::Process(p) => Generic::Process(p.build().await),
+            GenericBuilder::ProcessBinary(pb) => Generic::ProcessBinary(pb.build().await),
+            GenericBuilder::ZeroCopy(z) => Generic::ZeroCopy(z.build().await),
+            GenericBuilder::ZeroCopyBinary(z) => Generic::ZeroCopyBinary(z.build().await),
         }
     }
 }

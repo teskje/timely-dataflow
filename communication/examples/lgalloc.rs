@@ -61,7 +61,8 @@ mod example {
         }
     }
 
-    pub(crate) fn main() {
+    #[tokio::main(flavor = "local")]
+    pub(crate) async fn main() {
         let mut lgconfig = lgalloc::LgAlloc::new();
         lgconfig.enable().with_path(std::env::temp_dir());
         lgalloc::lgalloc_set_config(&lgconfig);
@@ -73,8 +74,8 @@ mod example {
 
         // extract the configuration from user-supplied arguments, initialize the computation.
         let config = timely_communication::Config::ProcessBinary(4);
-        let (allocators, others) = config.try_build_with(refill).unwrap();
-        let guards = timely_communication::initialize_from(allocators, others, |mut allocator| {
+        let (allocators, others) = config.try_build_with(refill).await.unwrap();
+        let guards = timely_communication::initialize_from(allocators, others, async |mut allocator| {
 
             println!("worker {} of {} started", allocator.index(), allocator.peers());
 
@@ -97,6 +98,8 @@ mod example {
                 if let Some(message) = receiver.recv() {
                     println!("worker {}: received: <{}>", allocator.index(), message.payload);
                     received += 1;
+                } else {
+                    tokio::task::yield_now().await;
                 }
 
                 allocator.release();
@@ -107,7 +110,7 @@ mod example {
 
         // computation runs until guards are joined or dropped.
         if let Ok(guards) = guards {
-            for guard in guards.join() {
+            for guard in guards.join().await {
                 println!("result: {:?}", guard);
             }
         }

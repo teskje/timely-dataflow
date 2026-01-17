@@ -2,9 +2,9 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{VecDeque, HashMap, hash_map::Entry};
-use std::sync::mpsc::{Sender, Receiver};
 
 use timely_bytes::arc::Bytes;
+use tokio::sync::mpsc::{UnboundedSender as Sender, UnboundedReceiver as Receiver};
 
 use crate::networking::MessageHeader;
 
@@ -81,7 +81,7 @@ pub fn new_vector<A: AllocateBuilder>(
 impl<A: AllocateBuilder> TcpBuilder<A> {
 
     /// Builds a `TcpAllocator`, instantiating `Rc<RefCell<_>>` elements.
-    pub fn build(self) -> TcpAllocator<A::Allocator> {
+    pub async fn build(self) -> TcpAllocator<A::Allocator> {
 
         // Fulfill puller obligations.
         let mut recvs = Vec::with_capacity(self.peers);
@@ -94,8 +94,8 @@ impl<A: AllocateBuilder> TcpBuilder<A> {
 
         // Extract pusher commitments.
         let mut sends = Vec::with_capacity(self.peers);
-        for pusher in self.futures.into_iter() {
-            let queue = pusher.recv().expect("Failed to receive push queue");
+        for mut pusher in self.futures.into_iter() {
+            let queue = pusher.recv().await.expect("Failed to receive push queue");
             let sendpoint = SendEndpoint::new(queue, self.refill.clone());
             sends.push(Rc::new(RefCell::new(sendpoint)));
         }
@@ -104,7 +104,7 @@ impl<A: AllocateBuilder> TcpBuilder<A> {
         //     |send| Rc::new(RefCell::new(SendEndpoint::new(send)))).collect();
 
         TcpAllocator {
-            inner: self.inner.build(),
+            inner: self.inner.build().await,
             index: self.index,
             peers: self.peers,
             canaries: Rc::new(RefCell::new(Vec::new())),
@@ -314,7 +314,7 @@ impl<A: Allocate> Allocate for TcpAllocator<A> {
     fn events(&self) -> &Rc<RefCell<Vec<usize>>> {
         self.inner.events()
     }
-    fn await_events(&self, duration: Option<std::time::Duration>) {
-        self.inner.await_events(duration);
+    async fn await_events(&self, duration: Option<std::time::Duration>) {
+        self.inner.await_events(duration).await;
     }
 }

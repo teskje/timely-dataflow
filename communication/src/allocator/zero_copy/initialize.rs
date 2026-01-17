@@ -15,27 +15,31 @@ use super::stream::Stream;
 /// On drop, the guard joins with each of the threads to ensure that they complete
 /// cleanly and send all necessary data.
 pub struct CommsGuard {
-    send_guards: Vec<::std::thread::JoinHandle<()>>,
-    recv_guards: Vec<::std::thread::JoinHandle<()>>,
+    send_guards: Vec<tokio::task::JoinHandle<()>>,
+    recv_guards: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for CommsGuard {
     fn drop(&mut self) {
         for handle in self.send_guards.drain(..) {
-            handle.join().expect("Send thread panic");
+            if !handle.is_finished() {
+                println!("aborting send task because guard was dropped");
+                handle.abort();
+            }
         }
-        // println!("SEND THREADS JOINED");
         for handle in self.recv_guards.drain(..) {
-            handle.join().expect("Recv thread panic");
+            if !handle.is_finished() {
+                println!("aborting recv task because guard was dropped");
+                handle.abort();
+            }
         }
-        // println!("RECV THREADS JOINED");
     }
 }
 
 use crate::logging::CommunicationSetup;
 
 /// Initializes network connections
-pub fn initialize_networking<P: PeerBuilder>(
+pub async fn initialize_networking<P: PeerBuilder>(
     addresses: Vec<String>,
     my_index: usize,
     threads: usize,
@@ -45,7 +49,7 @@ pub fn initialize_networking<P: PeerBuilder>(
 )
 -> ::std::io::Result<(Vec<TcpBuilder<P::Peer>>, CommsGuard)>
 {
-    let sockets = create_sockets(addresses, my_index, noisy)?;
+    let sockets = create_sockets(addresses, my_index, noisy).await?;
     initialize_networking_from_sockets::<_, P>(sockets, my_index, threads, refill, log_sender)
 }
 
@@ -57,7 +61,7 @@ pub fn initialize_networking<P: PeerBuilder>(
 /// It is important that the `sockets` argument contain sockets for each remote process, in order, and
 /// with position `my_index` set to `None`.
 pub fn initialize_networking_from_sockets<S: Stream + 'static, P: PeerBuilder>(
-    mut sockets: Vec<Option<S>>,
+    sockets: Vec<Option<S>>,
     my_index: usize,
     threads: usize,
     refill: BytesRefill,
@@ -65,11 +69,6 @@ pub fn initialize_networking_from_sockets<S: Stream + 'static, P: PeerBuilder>(
 )
 -> ::std::io::Result<(Vec<TcpBuilder<P::Peer>>, CommsGuard)>
 {
-    // Sockets are expected to be blocking,
-    for socket in sockets.iter_mut().flatten() {
-        socket.set_nonblocking(false).expect("failed to set socket to blocking");
-    }
-
     let processes = sockets.len();
 
     let process_allocators = P::new_vector(threads, refill.clone());
@@ -85,23 +84,19 @@ pub fn initialize_networking_from_sockets<S: Stream + 'static, P: PeerBuilder>(
     // for each process, if a stream exists (i.e. not local) ...
     for (index, stream) in sockets.into_iter().enumerate().filter_map(|(i, s)| s.map(|s| (i, s))) {
         let remote_recv = promises_iter.next().unwrap();
+        let (stream_rx, stream_tx) = stream.split();
 
         {
             let log_sender = Arc::clone(&log_sender);
-            let stream = stream.try_clone()?;
-            let join_guard =
-            ::std::thread::Builder::new()
-                .name(format!("timely:send-{}", index))
-                .spawn(move || {
-
+            let join_guard = tokio::task::spawn_local(async move {
                     let logger = log_sender(CommunicationSetup {
                         process: my_index,
                         sender: true,
                         remote: Some(index),
                     });
 
-                    send_loop(stream, remote_recv, my_index, index, logger);
-                })?;
+                    send_loop(stream_tx, remote_recv, my_index, index, logger).await;
+                });
 
             send_guards.push(join_guard);
         }
@@ -111,19 +106,15 @@ pub fn initialize_networking_from_sockets<S: Stream + 'static, P: PeerBuilder>(
         {
             // let remote_sends = remote_sends.clone();
             let log_sender = Arc::clone(&log_sender);
-            let stream = stream.try_clone()?;
             let refill = refill.clone();
-            let join_guard =
-            ::std::thread::Builder::new()
-                .name(format!("timely:recv-{}", index))
-                .spawn(move || {
+            let join_guard = tokio::task::spawn_local(async move {
                     let logger = log_sender(CommunicationSetup {
                         process: my_index,
                         sender: false,
                         remote: Some(index),
                     });
-                    recv_loop(stream, remote_send, threads * my_index, my_index, index, refill, logger);
-                })?;
+                    recv_loop(stream_rx, remote_send, threads * my_index, my_index, index, refill, logger).await;
+                });
 
             recv_guards.push(join_guard);
         }

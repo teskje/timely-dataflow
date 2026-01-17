@@ -27,6 +27,10 @@ serde = { version = "1.0", features = ["derive"] }
 timely_bytes = { path = "../bytes", version = "0.25" }
 timely_container = { path = "../container", version = "0.25.1" }
 timely_logging = { path = "../logging", version = "0.25" }
+tokio = { version = "1", features = ["rt", "sync", "time", "net", "io-util"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
 
 # Lgalloc only supports linux and macos, don't depend on any other OS.
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dev-dependencies]

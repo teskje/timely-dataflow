@@ -1,13 +1,15 @@
 //! Methods related to reading from and writing to TCP connections
 
-use std::io::{self, Write};
-use std::sync::mpsc::{Sender, Receiver};
+use std::io;
+
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::sync::mpsc::{UnboundedSender as Sender, UnboundedReceiver as Receiver};
 
 use crate::networking::MessageHeader;
+use crate::park_task;
 
 use super::bytes_slab::{BytesRefill, BytesSlab};
 use super::bytes_exchange::MergeQueue;
-use super::stream::Stream;
 
 use timely_logging::Logger;
 
@@ -29,8 +31,8 @@ fn tcp_panic(context: &'static str, cause: io::Error) -> ! {
 /// If the stream ends without being shut down, or if reading from the stream fails, the
 /// receive thread panics with a message that starts with "timely communication error:"
 /// in an attempt to take down the computation and cause the failures to cascade.
-pub fn recv_loop<S>(
-    mut reader: S,
+pub async fn recv_loop<R>(
+    mut reader: R,
     targets: Vec<Receiver<MergeQueue>>,
     worker_offset: usize,
     process: usize,
@@ -39,13 +41,18 @@ pub fn recv_loop<S>(
     logger: Option<Logger<CommunicationEventBuilder>>
 )
 where
-    S: Stream,
+    R: AsyncRead + Unpin,
 {
     let mut logger = logger.map(|logger| logger.into_typed::<CommunicationEvent>());
     // Log the receive thread's start.
     logger.as_mut().map(|l| l.log(StateEvent { send: false, process, remote, start: true }));
 
-    let mut targets: Vec<MergeQueue> = targets.into_iter().map(|x| x.recv().expect("Failed to receive MergeQueue")).collect();
+    let mut queues: Vec<MergeQueue> = Vec::new();
+    for mut x in targets {
+        let q = x.recv().await.expect("Failed to receive MergeQueue");
+        queues.push(q);
+    }
+    let mut targets = queues;
 
     let mut buffer = BytesSlab::new(20, refill);
 
@@ -70,7 +77,7 @@ where
         assert!(!buffer.empty().is_empty());
 
         // Attempt to read some more bytes into self.buffer.
-        let read = match reader.read(buffer.empty()) {
+        let read = match reader.read(buffer.empty()).await {
             Err(x) => tcp_panic("reading data", x),
             Ok(0) => {
                 tcp_panic(
@@ -107,7 +114,7 @@ where
                     panic!("Clean shutdown followed by data.");
                 }
                 buffer.ensure_capacity(1);
-                if reader.read(buffer.empty()).unwrap_or_else(|e| tcp_panic("reading EOF", e)) > 0 {
+                if reader.read(buffer.empty()).await.unwrap_or_else(|e| tcp_panic("reading EOF", e)) > 0 {
                     panic!("Clean shutdown followed by data.");
                 }
             }
@@ -133,9 +140,9 @@ where
 /// If writing to the stream fails, the send thread panics with a message that starts with
 /// "timely communication error:" in an attempt to take down the computation and cause the
 /// failures to cascade.
-pub fn send_loop<S: Stream>(
+pub async fn send_loop<W: AsyncWrite + Unpin>(
     // TODO: Maybe we don't need BufWriter with consolidation in writes.
-    writer: S,
+    writer: W,
     sources: Vec<Sender<MergeQueue>>,
     process: usize,
     remote: usize,
@@ -152,7 +159,7 @@ pub fn send_loop<S: Stream>(
         queue
     }).collect();
 
-    let mut writer = ::std::io::BufWriter::with_capacity(1 << 16, writer);
+    let mut writer = tokio::io::BufWriter::with_capacity(1 << 16, writer);
     let mut stash = Vec::new();
 
     while !sources.is_empty() {
@@ -170,10 +177,10 @@ pub fn send_loop<S: Stream>(
             // still be a signal incoming.
             //
             // We could get awoken by more data, a channel closing, or spuriously perhaps.
-            writer.flush().unwrap_or_else(|e| tcp_panic("flushing writer", e));
+            writer.flush().await.unwrap_or_else(|e| tcp_panic("flushing writer", e));
             sources.retain(|source| !source.is_complete());
             if !sources.is_empty() {
-                std::thread::park();
+                park_task(None).await;
             }
         }
         else {
@@ -189,7 +196,7 @@ pub fn send_loop<S: Stream>(
                     }
                 });
 
-                writer.write_all(&bytes[..]).unwrap_or_else(|e| tcp_panic("writing data", e));
+                writer.write_all(&bytes[..]).await.unwrap_or_else(|e| tcp_panic("writing data", e));
             }
         }
     }
@@ -205,9 +212,11 @@ pub fn send_loop<S: Stream>(
         length:     0,
         seqno:      0,
     };
-    header.write_to(&mut writer).unwrap_or_else(|e| tcp_panic("writing data", e));
-    writer.flush().unwrap_or_else(|e| tcp_panic("flushing writer", e));
-    writer.get_mut().shutdown(::std::net::Shutdown::Write).unwrap_or_else(|e| tcp_panic("shutting down writer", e));
+    let mut header_bytes = Vec::new();
+    header.write_to(&mut header_bytes).unwrap_or_else(|e| tcp_panic("writing data", e));
+    writer.write_all(&header_bytes).await.unwrap_or_else(|e| tcp_panic("writing data", e));
+    writer.flush().await.unwrap_or_else(|e| tcp_panic("flushing writer", e));
+    writer.get_mut().shutdown().await.unwrap_or_else(|e| tcp_panic("shutting down writer", e));
     logger.as_mut().map(|logger| logger.log(MessageEvent { is_send: true, header }));
 
     // Log the send thread's end.

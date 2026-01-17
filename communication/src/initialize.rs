@@ -1,6 +1,5 @@
 //! Initialization logic for a generic instance of the `Allocate` channel allocation trait.
 
-use std::thread;
 #[cfg(feature = "getopts")]
 use std::io::BufRead;
 use std::sync::Arc;
@@ -151,16 +150,16 @@ impl Config {
     }
 
     /// Attempts to assemble the described communication infrastructure.
-    pub fn try_build(self) -> Result<(Vec<GenericBuilder>, Box<dyn Any+Send>), String> {
+    pub async fn try_build(self) -> Result<(Vec<GenericBuilder>, Box<dyn Any+Send>), String> {
         let refill = BytesRefill {
             logic: Arc::new(|size| Box::new(vec![0_u8; size]) as Box<dyn DerefMut<Target=[u8]>>),
             limit: None,
         };
-        self.try_build_with(refill)
+        self.try_build_with(refill).await
     }
 
     /// Attempts to assemble the described communication infrastructure, using the supplied refill function.
-    pub fn try_build_with(self, refill: BytesRefill) -> Result<(Vec<GenericBuilder>, Box<dyn Any+Send>), String> {
+    pub async fn try_build_with(self, refill: BytesRefill) -> Result<(Vec<GenericBuilder>, Box<dyn Any+Send>), String> {
         match self {
             Config::Thread => {
                 Ok((vec![GenericBuilder::Thread(ThreadBuilder)], Box::new(())))
@@ -172,7 +171,7 @@ impl Config {
                 Ok((ProcessBuilder::new_vector(threads, refill).into_iter().map(GenericBuilder::ProcessBinary).collect(), Box::new(())))
             },
             Config::Cluster { threads, process, addresses, report, zerocopy: false, log_fn } => {
-                match initialize_networking::<Process>(addresses, process, threads, report, refill, log_fn) {
+                match initialize_networking::<Process>(addresses, process, threads, report, refill, log_fn).await {
                     Ok((stuff, guard)) => {
                         Ok((stuff.into_iter().map(GenericBuilder::ZeroCopy).collect(), Box::new(guard)))
                     },
@@ -180,7 +179,7 @@ impl Config {
                 }
             },
             Config::Cluster { threads, process, addresses, report, zerocopy: true, log_fn } => {
-                match initialize_networking::<ProcessBuilder>(addresses, process, threads, report, refill, log_fn) {
+                match initialize_networking::<ProcessBuilder>(addresses, process, threads, report, refill, log_fn).await {
                     Ok((stuff, guard)) => {
                         Ok((stuff.into_iter().map(GenericBuilder::ZeroCopyBinary).collect(), Box::new(guard)))
                     },
@@ -223,9 +222,10 @@ impl Config {
 ///     }
 /// }
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// // extract the configuration from user-supplied arguments, initialize the computation.
 /// let config = timely_communication::Config::from_args(std::env::args()).unwrap();
-/// let guards = timely_communication::initialize(config, |mut allocator| {
+/// let guards = timely_communication::initialize(config, async |mut allocator| {
 ///
 ///     println!("worker {} of {} started", allocator.index(), allocator.peers());
 ///
@@ -254,15 +254,16 @@ impl Config {
 ///     }
 ///
 ///     allocator.index()
-/// });
+/// }).await;
 ///
 /// // computation runs until guards are joined or dropped.
 /// if let Ok(guards) = guards {
-///     for guard in guards.join() {
+///     for guard in guards.join().await {
 ///         println!("result: {:?}", guard);
 ///     }
 /// }
 /// else { println!("error in computation"); }
+/// # });
 /// ```
 ///
 /// This should produce output like:
@@ -277,11 +278,11 @@ impl Config {
 /// result: Ok(0)
 /// result: Ok(1)
 /// ```
-pub fn initialize<T:Send+'static, F: Fn(Generic)->T+Send+Sync+'static>(
+pub async fn initialize<T:Send+'static, F: AsyncFn(Generic)->T+Send+Sync+'static>(
     config: Config,
     func: F,
 ) -> Result<WorkerGuards<T>,String> {
-    let (allocators, others) = config.try_build()?;
+    let (allocators, others) = config.try_build().await?;
     initialize_from(allocators, others, func)
 }
 
@@ -316,9 +317,10 @@ pub fn initialize<T:Send+'static, F: Fn(Generic)->T+Send+Sync+'static>(
 ///     }
 /// }
 ///
+/// # tokio::runtime::LocalRuntime::new().unwrap().block_on(async {
 /// // extract the configuration from user-supplied arguments, initialize the computation.
 /// let config = timely_communication::Config::from_args(std::env::args()).unwrap();
-/// let guards = timely_communication::initialize(config, |mut allocator| {
+/// let guards = timely_communication::initialize(config, async |mut allocator| {
 ///
 ///     println!("worker {} of {} started", allocator.index(), allocator.peers());
 ///
@@ -347,15 +349,16 @@ pub fn initialize<T:Send+'static, F: Fn(Generic)->T+Send+Sync+'static>(
 ///     }
 ///
 ///     allocator.index()
-/// });
+/// }).await;
 ///
 /// // computation runs until guards are joined or dropped.
 /// if let Ok(guards) = guards {
-///     for guard in guards.join() {
+///     for guard in guards.join().await {
 ///         println!("result: {:?}", guard);
 ///     }
 /// }
 /// else { println!("error in computation"); }
+/// # });
 /// ```
 pub fn initialize_from<A, T, F>(
     builders: Vec<A>,
@@ -365,19 +368,17 @@ pub fn initialize_from<A, T, F>(
 where
     A: AllocateBuilder+'static,
     T: Send+'static,
-    F: Fn(<A as AllocateBuilder>::Allocator)->T+Send+Sync+'static
+    F: AsyncFn(<A as AllocateBuilder>::Allocator)->T+Send+Sync+'static
 {
     let logic = Arc::new(func);
     let mut guards = Vec::new();
-    for (index, builder) in builders.into_iter().enumerate() {
+    for builder in builders {
         let clone = Arc::clone(&logic);
-        guards.push(thread::Builder::new()
-                            .name(format!("timely:work-{}", index))
-                            .spawn(move || {
-                                let communicator = builder.build();
-                                (*clone)(communicator)
-                            })
-                            .map_err(|e| format!("{:?}", e))?);
+        let task = tokio::task::spawn_local(async move {
+            let communicator = builder.build().await;
+            (*clone)(communicator).await
+        });
+        guards.push(task);
     }
 
     Ok(WorkerGuards { guards, others })
@@ -385,14 +386,14 @@ where
 
 /// Maintains `JoinHandle`s for worker threads.
 pub struct WorkerGuards<T:Send+'static> {
-    guards: Vec<::std::thread::JoinHandle<T>>,
+    guards: Vec<tokio::task::JoinHandle<T>>,
     others: Box<dyn Any+Send>,
 }
 
 impl<T:Send+'static> WorkerGuards<T> {
 
     /// Returns a reference to the indexed guard.
-    pub fn guards(&self) -> &[std::thread::JoinHandle<T>] {
+    pub fn guards(&self) -> &[tokio::task::JoinHandle<T>] {
         &self.guards[..]
     }
 
@@ -402,19 +403,30 @@ impl<T:Send+'static> WorkerGuards<T> {
     }
 
     /// Waits on the worker threads and returns the results they produce.
-    pub fn join(mut self) -> Vec<Result<T, String>> {
-        self.guards
-            .drain(..)
-            .map(|guard| guard.join().map_err(|e| format!("{:?}", e)))
-            .collect()
+    pub async fn join(mut self) -> Vec<Result<T, String>> {
+        let mut results = Vec::new();
+        for guard in self.guards.drain(..) {
+            let res = guard.await.map_err(|e| format!("{:?}", e));
+            results.push(res);
+        }
+        results
+    }
+
+    /// Waits on the worker threads and asserts that they finished successfully.
+    pub async fn join_and_assert(self) {
+        for res in self.join().await {
+            assert!(res.is_ok());
+        }
     }
 }
 
 impl<T:Send+'static> Drop for WorkerGuards<T> {
     fn drop(&mut self) {
         for guard in self.guards.drain(..) {
-            guard.join().expect("Worker panic");
+            if !guard.is_finished() {
+                println!("aborting worker task because guard was dropped");
+                guard.abort();
+            }
         }
-        // println!("WORKER THREADS JOINED");
     }
 }
